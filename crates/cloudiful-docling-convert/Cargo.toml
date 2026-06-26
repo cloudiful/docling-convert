@@ -5,7 +5,7 @@ edition = "2024"
 description = "Core Rust library for Docling-backed document conversion"
 license.workspace = true
 repository.workspace = true
-publish = false
+publish = ["crates-io"]
 
 [dependencies]
 bytes.workspace = true
