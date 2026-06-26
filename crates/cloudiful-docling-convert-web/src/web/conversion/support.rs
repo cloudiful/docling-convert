@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use document_convert::{
+use cloudiful_docling_convert::{
     ConversionBehavior, InputDocument, InputKind, PdfConvertError, count_input_chunks,
 };
 

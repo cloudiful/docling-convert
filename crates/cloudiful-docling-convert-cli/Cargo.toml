@@ -1,11 +1,13 @@
 [package]
-name = "document-convert-cli"
+name = "cloudiful-docling-convert-cli"
 version.workspace = true
 edition = "2024"
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [[bin]]
-name = "document-convert"
+name = "cloudiful-docling-convert"
 path = "src/main.rs"
 
 [dependencies]
@@ -16,7 +18,7 @@ dotenvy.workspace = true
 futures.workspace = true
 log.workspace = true
 log4rs = { workspace = true, features = ["zstd", "background_rotation"] }
-document-convert.workspace = true
+cloudiful-docling-convert.workspace = true
 rand.workspace = true
 reqwest = { workspace = true, features = ["json", "multipart"] }
 serde = { workspace = true, features = ["derive"] }

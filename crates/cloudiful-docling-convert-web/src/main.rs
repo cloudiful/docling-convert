@@ -1,11 +1,11 @@
 use clap::Parser;
-use document_convert_web::{WebServerConfig, run_web_server};
+use cloudiful_docling_convert_web::{WebServerConfig, run_web_server};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "document-convert-web",
+    name = "cloudiful-docling-convert-web",
     version,
-    about = "Run the document-convert Axum web server"
+    about = "Run the cloudiful-docling-convert Axum web server"
 )]
 struct Args {
     #[arg(

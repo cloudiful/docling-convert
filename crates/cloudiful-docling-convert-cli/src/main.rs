@@ -6,7 +6,7 @@ use logging::init_logging;
 
 use bytes::Bytes;
 use clap::Parser;
-use document_convert::{
+use cloudiful_docling_convert::{
     ConvertRequest, DocumentConverter, FileConvertRequest, InputDocument, PdfConvertError, Result,
     build_convert_options, build_docling_client, supported_input_kind,
 };
@@ -22,7 +22,10 @@ async fn main() {
         std::process::exit(1);
     }
 
-    info!("Starting document-convert v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting cloudiful-docling-convert v{}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     log::debug!("Input paths: {:?}", args.input_files);
     log::debug!("Output directory: {}", args.output_dir.display());
@@ -187,6 +190,6 @@ async fn convert_single_file(file_path: std::path::PathBuf, args: Args) -> Resul
     Ok(())
 }
 
-fn create_docling_client(args: &Args) -> Result<document_convert::DoclingClient> {
+fn create_docling_client(args: &Args) -> Result<cloudiful_docling_convert::DoclingClient> {
     build_docling_client(args.runtime_config())
 }

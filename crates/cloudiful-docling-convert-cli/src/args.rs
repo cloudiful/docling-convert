@@ -1,5 +1,5 @@
 use clap::{ArgAction, Parser};
-use document_convert::{ConversionBehavior, DoclingRuntimeConfig, OutputFormat};
+use cloudiful_docling_convert::{ConversionBehavior, DoclingRuntimeConfig, OutputFormat};
 use std::path::PathBuf;
 
 fn parse_positive_u32(value: &str) -> Result<u32, String> {
@@ -30,10 +30,10 @@ fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "document-convert",
+    name = "cloudiful-docling-convert",
     version,
-    about = "Convert pdf/docx/md/txt files through the document-convert library and Docling API",
-    long_about = "A CLI tool built on the document-convert library. It converts PDF, DOCX, Markdown, \
+    about = "Convert pdf/docx/md/txt files through the cloudiful-docling-convert library and Docling API",
+    long_about = "A CLI tool built on the cloudiful-docling-convert library. It converts PDF, DOCX, Markdown, \
                   and TXT inputs into structured Markdown, text, or JSON output. PDF inputs keep \
                   split/bookmark-aware processing and parallel submission through Docling."
 )]
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn parses_typed_format_and_explicit_false_flags() {
         let args = Args::try_parse_from([
-            "document-convert",
+            "cloudiful-docling-convert",
             "--format",
             "json",
             "--split-input=false",
@@ -201,11 +201,12 @@ mod tests {
     #[test]
     fn rejects_zero_for_positive_numeric_arguments() {
         let pages_err =
-            Args::try_parse_from(["document-convert", "--pages-per-file", "0"]).unwrap_err();
+            Args::try_parse_from(["cloudiful-docling-convert", "--pages-per-file", "0"])
+                .unwrap_err();
         assert!(pages_err.to_string().contains("1 or greater"));
 
         let batch_err =
-            Args::try_parse_from(["document-convert", "--batch-size", "0"]).unwrap_err();
+            Args::try_parse_from(["cloudiful-docling-convert", "--batch-size", "0"]).unwrap_err();
         assert!(batch_err.to_string().contains("1 or greater"));
     }
 }

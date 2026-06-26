@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use axum::http::StatusCode;
-use document_convert::{
+use cloudiful_docling_convert::{
     DoclingClient, DoclingRuntimeConfig, InputKind, OutputFormat, PdfConvertError,
     build_docling_client,
 };

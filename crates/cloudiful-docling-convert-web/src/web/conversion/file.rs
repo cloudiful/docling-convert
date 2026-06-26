@@ -1,4 +1,4 @@
-use document_convert::{
+use cloudiful_docling_convert::{
     ConvertRequest, DocumentConverter, FileConvertRequest, InputDocument, InputKind,
     PdfConvertError, PdfInfo, build_convert_options,
 };

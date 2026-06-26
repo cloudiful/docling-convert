@@ -1,5 +1,5 @@
 use axum::body::Bytes;
-use document_convert::{InputDocument, InputKind, PdfConvertError};
+use cloudiful_docling_convert::{InputDocument, InputKind, PdfConvertError};
 use reqwest::Response;
 
 use super::super::state::{AppState, TaskConfig};

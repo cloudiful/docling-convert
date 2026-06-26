@@ -15,7 +15,7 @@ use super::conversion::{
 use super::state::{AppState, ConversionTask, TaskConfig, TaskStatus};
 use super::support::{output_content_type, resolve_input_kind, sanitize_filename};
 use super::task_config::TaskConfigInput;
-use document_convert::InputDocument;
+use cloudiful_docling_convert::InputDocument;
 
 pub async fn health_check() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
@@ -66,7 +66,7 @@ pub async fn upload_file(
     let input = InputDocument::new(file_name.clone(), input_kind.media_type(), data);
     let total_chunks =
         total_chunks_for_input(&input, &config).unwrap_or_else(|_| match input_kind {
-            document_convert::InputKind::Pdf => 0,
+            cloudiful_docling_convert::InputKind::Pdf => 0,
             _ => 1,
         });
 

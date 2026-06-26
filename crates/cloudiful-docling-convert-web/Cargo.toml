@@ -1,11 +1,13 @@
 [package]
-name = "document-convert-web"
+name = "cloudiful-docling-convert-web"
 version.workspace = true
 edition = "2024"
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [[bin]]
-name = "document-convert-web"
+name = "cloudiful-docling-convert-web"
 path = "src/main.rs"
 
 [dependencies]
@@ -13,7 +15,7 @@ axum = { workspace = true, features = ["multipart"] }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
 dotenvy.workspace = true
-document-convert.workspace = true
+cloudiful-docling-convert.workspace = true
 log.workspace = true
 reqwest = { workspace = true, features = ["json", "multipart"] }
 serde = { workspace = true, features = ["derive"] }

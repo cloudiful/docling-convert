@@ -64,7 +64,9 @@ pub struct AppState {
 }
 
 pub fn task_work_dir(task_id: &str) -> PathBuf {
-    std::env::temp_dir().join("document-convert").join(task_id)
+    std::env::temp_dir()
+        .join("cloudiful-docling-convert")
+        .join(task_id)
 }
 
 async fn remove_file_if_exists(path: &Path) {

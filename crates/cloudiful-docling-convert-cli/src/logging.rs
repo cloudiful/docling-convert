@@ -1,4 +1,4 @@
-use document_convert::{PdfConvertError, Result};
+use cloudiful_docling_convert::{PdfConvertError, Result};
 use log::{LevelFilter, info};
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ pub fn init_logging() -> Result<()> {
         )))
         .build();
 
-    let log_file_path = log_dir.join("document-convert.log");
+    let log_file_path = log_dir.join("cloudiful-docling-convert.log");
     let file = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
             "[{d(%Y-%m-%d %H:%M:%S.%f)} {l} {M}:{L}] {m}{n}",
@@ -37,7 +37,10 @@ pub fn init_logging() -> Result<()> {
                     FixedWindowRoller::builder()
                         .base(1)
                         .build(
-                            &format!("{}/document-convert-{{}}.log.zst", log_dir.display()),
+                            &format!(
+                                "{}/cloudiful-docling-convert-{{}}.log.zst",
+                                log_dir.display()
+                            ),
                             100,
                         )
                         .map_err(|e| PdfConvertError::api_error(None, e.to_string()))?,
@@ -59,7 +62,7 @@ pub fn init_logging() -> Result<()> {
                 .appender("stdout")
                 .appender("file")
                 .additive(false)
-                .build("document_convert", LevelFilter::Info),
+                .build("cloudiful_docling_convert", LevelFilter::Info),
         )
         .build(
             Root::builder()
@@ -79,7 +82,7 @@ pub fn init_logging() -> Result<()> {
 
 fn get_log_dir() -> Result<PathBuf> {
     if let Some(cache_dir) = dirs::cache_dir() {
-        return Ok(cache_dir.join("document-convert"));
+        return Ok(cache_dir.join("cloudiful-docling-convert"));
     }
 
     std::env::current_dir()
