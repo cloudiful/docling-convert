@@ -18,6 +18,17 @@ pub struct DoclingRuntimeConfig {
 }
 
 impl DoclingRuntimeConfig {
+    pub fn without_vlm(docling_base_url: impl Into<String>) -> Self {
+        Self {
+            docling_base_url: docling_base_url.into(),
+            openai_base_url: String::new(),
+            vlm_pipeline_model: String::new(),
+            picture_description_model: String::new(),
+            code_formula_model: String::new(),
+            api_key: None,
+        }
+    }
+
     pub fn into_docling_config(self) -> DoclingConfig {
         DoclingConfig {
             base_url: self.docling_base_url,

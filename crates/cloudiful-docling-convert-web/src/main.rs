@@ -18,35 +18,27 @@ struct Args {
 
     #[arg(
         long,
-        default_value = "https://api.openai.com/v1",
         value_name = "URL",
-        help = "OpenAI-compatible API base URL for VLM"
+        help = "OpenAI-compatible API base URL for optional VLM enrichment"
     )]
-    openai_base_url: String,
+    openai_base_url: Option<String>,
+
+    #[arg(long, value_name = "MODEL", help = "Optional VLM pipeline model")]
+    vlm_pipeline_model: Option<String>,
 
     #[arg(
         long,
-        default_value = "gpt-4o-mini",
         value_name = "MODEL",
-        help = "VLM Pipeline model"
+        help = "Optional VLM model for picture descriptions"
     )]
-    vlm_pipeline_model: String,
+    picture_description_model: Option<String>,
 
     #[arg(
         long,
-        default_value = "gpt-4o-mini",
         value_name = "MODEL",
-        help = "VLM model for picture descriptions"
+        help = "Optional VLM model for code and formula recognition"
     )]
-    picture_description_model: String,
-
-    #[arg(
-        long,
-        default_value = "gpt-4o-mini",
-        value_name = "MODEL",
-        help = "VLM model for code and formula recognition"
-    )]
-    code_formula_model: String,
+    code_formula_model: Option<String>,
 
     #[arg(
         long,
@@ -73,10 +65,10 @@ async fn main() {
 
     if let Err(error) = run_web_server(WebServerConfig {
         docling_base_url: args.docling_base_url,
-        openai_base_url: args.openai_base_url,
-        vlm_pipeline_model: args.vlm_pipeline_model,
-        picture_description_model: args.picture_description_model,
-        code_formula_model: args.code_formula_model,
+        openai_base_url: args.openai_base_url.unwrap_or_default(),
+        vlm_pipeline_model: args.vlm_pipeline_model.unwrap_or_default(),
+        picture_description_model: args.picture_description_model.unwrap_or_default(),
+        code_formula_model: args.code_formula_model.unwrap_or_default(),
         host: args.host,
         port: args.port,
     })

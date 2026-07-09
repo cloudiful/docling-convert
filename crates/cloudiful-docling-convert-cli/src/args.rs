@@ -109,35 +109,27 @@ pub struct Args {
 
     #[arg(
         long,
-        default_value = "https://api.openai.com/v1",
         value_name = "URL",
-        help = "OpenAI-compatible API base URL for VLM"
+        help = "OpenAI-compatible API base URL for optional VLM enrichment"
     )]
-    pub openai_base_url: String,
+    pub openai_base_url: Option<String>,
+
+    #[arg(long, value_name = "MODEL", help = "Optional VLM pipeline model")]
+    pub vlm_pipeline_model: Option<String>,
 
     #[arg(
         long,
-        default_value = "gpt-4o-mini",
         value_name = "MODEL",
-        help = "VLM Pipeline model"
+        help = "Optional VLM model for picture descriptions"
     )]
-    pub vlm_pipeline_model: String,
+    pub picture_description_model: Option<String>,
 
     #[arg(
         long,
-        default_value = "gpt-4o-mini",
         value_name = "MODEL",
-        help = "VLM model for picture descriptions"
+        help = "Optional VLM model for code and formula recognition"
     )]
-    pub picture_description_model: String,
-
-    #[arg(
-        long,
-        default_value = "gpt-4o-mini",
-        value_name = "MODEL",
-        help = "VLM model for code and formula recognition"
-    )]
-    pub code_formula_model: String,
+    pub code_formula_model: Option<String>,
 
     #[arg(
         short = 'b',
@@ -171,10 +163,10 @@ impl Args {
     pub fn runtime_config(&self) -> DoclingRuntimeConfig {
         DoclingRuntimeConfig {
             docling_base_url: self.docling_base_url.clone(),
-            openai_base_url: self.openai_base_url.clone(),
-            vlm_pipeline_model: self.vlm_pipeline_model.clone(),
-            picture_description_model: self.picture_description_model.clone(),
-            code_formula_model: self.code_formula_model.clone(),
+            openai_base_url: self.openai_base_url.clone().unwrap_or_default(),
+            vlm_pipeline_model: self.vlm_pipeline_model.clone().unwrap_or_default(),
+            picture_description_model: self.picture_description_model.clone().unwrap_or_default(),
+            code_formula_model: self.code_formula_model.clone().unwrap_or_default(),
             api_key: std::env::var("OPENAI_API_KEY").ok(),
         }
     }
@@ -208,5 +200,16 @@ mod tests {
         let batch_err =
             Args::try_parse_from(["cloudiful-docling-convert", "--batch-size", "0"]).unwrap_err();
         assert!(batch_err.to_string().contains("1 or greater"));
+    }
+
+    #[test]
+    fn vlm_flags_are_optional() {
+        let args = Args::try_parse_from(["cloudiful-docling-convert"]).unwrap();
+        let runtime = args.runtime_config();
+
+        assert_eq!(runtime.openai_base_url, "");
+        assert_eq!(runtime.vlm_pipeline_model, "");
+        assert_eq!(runtime.picture_description_model, "");
+        assert_eq!(runtime.code_formula_model, "");
     }
 }

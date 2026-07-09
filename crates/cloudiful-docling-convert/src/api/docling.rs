@@ -15,6 +15,7 @@ use super::client::{
     extract_error_details, get_request, get_request_with_conn_close, handle_response,
     retry_with_backoff,
 };
+use super::vlm_config::ResolvedVlmConfig;
 
 #[derive(Debug, Clone)]
 pub struct DoclingConfig {
@@ -216,25 +217,24 @@ impl DoclingClient {
             input_kind,
             InputKind::Pdf | InputKind::Docx | InputKind::Markdown
         ) {
-            form = self.apply_vlm_config(form)?;
+            if let Some(vlm_config) = self.config.resolved_vlm_config()? {
+                form = self.apply_vlm_config(form, &vlm_config)?;
+            }
         }
 
         Ok(form)
     }
 
-    fn apply_vlm_config(&self, mut form: multipart::Form) -> Result<multipart::Form> {
-        let api_key = self.config.api_key.as_ref().ok_or_else(|| {
-            PdfConvertError::env_error(
-                "OPENAI_API_KEY",
-                "Required for Docling conversions. Please set this environment variable.",
-            )
-        })?;
-
+    fn apply_vlm_config(
+        &self,
+        mut form: multipart::Form,
+        vlm_config: &ResolvedVlmConfig,
+    ) -> Result<multipart::Form> {
         let picture_description_custom_config =
             PictureDescriptionVlmEngineOptions::for_openai_compatible(
-                &self.config.openai_base_url,
-                api_key,
-                &self.config.picture_description_model,
+                &vlm_config.openai_base_url,
+                &vlm_config.api_key,
+                &vlm_config.picture_description_model,
                 "Describe this image in a few sentences.",
                 300,
                 60,
@@ -245,28 +245,28 @@ impl DoclingClient {
             extract_code: Some(true),
             extract_formulas: Some(true),
             engine_options: OpenRouterConfigBuilder::engine_options(
-                &self.config.openai_base_url,
-                api_key,
-                &self.config.code_formula_model,
+                &vlm_config.openai_base_url,
+                &vlm_config.api_key,
+                &vlm_config.code_formula_model,
                 30,
                 2,
             ),
             model_spec: OpenRouterConfigBuilder::model_spec(
-                &self.config.code_formula_model,
+                &vlm_config.code_formula_model,
                 "Recognize code blocks and mathematical formulas in the image. For code, output the full code; for mathematical formulas, output in LaTeX format.",
                 1000,
             ),
         };
         let vlm_pipeline_custom_config = VlmConvertOptions {
             engine_options: OpenRouterConfigBuilder::engine_options(
-                &self.config.openai_base_url,
-                api_key,
-                &self.config.vlm_pipeline_model,
+                &vlm_config.openai_base_url,
+                &vlm_config.api_key,
+                &vlm_config.vlm_pipeline_model,
                 30,
                 2,
             ),
             model_spec: OpenRouterConfigBuilder::model_spec(
-                &self.config.vlm_pipeline_model,
+                &vlm_config.vlm_pipeline_model,
                 "",
                 1000,
             ),
@@ -351,5 +351,23 @@ mod tests {
         let debug = format!("{form:?}");
         assert!(!debug.contains("page_range"));
         assert!(debug.contains("from_formats"));
+    }
+
+    #[test]
+    fn build_form_skips_vlm_fields_when_runtime_config_is_missing() {
+        let client =
+            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
+
+        let input = InputDocument::new("notes.md", "text/markdown", Bytes::from_static(b"# hello"));
+        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
+
+        let form = client.build_form(&input, &request).unwrap();
+        let debug = format!("{form:?}");
+        assert!(!debug.contains("vlm_pipeline_custom_config"));
+        assert!(!debug.contains("picture_description_custom_config"));
+        assert!(!debug.contains("code_formula_custom_config"));
+        assert!(!debug.contains("do_code_enrichment"));
+        assert!(!debug.contains("do_formula_enrichment"));
+        assert!(!debug.contains("do_picture_description"));
     }
 }
