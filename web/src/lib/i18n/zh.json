@@ -11,7 +11,7 @@
     "dragDrop": "拖拽受支持的文档到此处，或点击浏览",
     "browse": "浏览文件",
     "uploading": "上传中...",
-    "formats": "支持 PDF、DOCX、PPTX、HTML、AsciiDoc、CSV、XLSX、ODT/ODS/ODP、EPUB、邮件、图片、Markdown 和文本文件"
+    "formats": "支持 PDF、DOCX、PPTX、HTML、AsciiDoc、CSV、XLSX、ODT/ODS/ODP、EPUB、邮件、图片、Markdown、文本、XML、JSON 和 LaTeX 文件"
   },
   "url": {
     "title": "从 URL 转换",
@@ -28,6 +28,15 @@
     "formatText": "文本",
     "formatHtml": "HTML",
     "formatDoctags": "DocTags",
+    "inputFormat": "输入格式",
+    "inputFormatAuto": "自动",
+    "inputFormatXmlUspto": "XML USPTO",
+    "inputFormatXmlJats": "XML JATS",
+    "inputFormatXmlXbrl": "XML XBRL",
+    "inputFormatXmlDoclang": "XML Docling",
+    "inputFormatMetsGbs": "METS GBS",
+    "inputFormatJsonDocling": "JSON Docling",
+    "inputFormatLatex": "LaTeX",
     "pagesPerFile": "每文件页数",
     "batchSize": "批处理大小",
     "splitInput": "拆分输入 PDF",

@@ -31,6 +31,7 @@ pub struct ConversionTask {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TaskConfig {
     pub format: String,
+    pub input_format: Option<String>,
     pub pages_per_file: u32,
     pub split_input: bool,
     pub split_by_bookmark: bool,
@@ -42,6 +43,7 @@ impl Default for TaskConfig {
     fn default() -> Self {
         Self {
             format: "md".to_string(),
+            input_format: None,
             pages_per_file: 5,
             split_input: true,
             split_by_bookmark: false,

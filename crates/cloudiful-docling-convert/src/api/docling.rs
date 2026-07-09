@@ -4,7 +4,7 @@ use bytes::Bytes;
 use reqwest::multipart;
 use serde_json::Value;
 
-use crate::document::{InputDocument, InputKind, OutputFormat};
+use crate::document::{InputDocument, OutputFormat};
 use crate::error::{PdfConvertError, Result};
 use crate::models::vlm::{OpenRouterConfigBuilder, VlmConvertOptions};
 use crate::models::{
@@ -213,10 +213,7 @@ impl DoclingClient {
             form = form.text("include_chunking", "true");
         }
 
-        if matches!(
-            input_kind,
-            InputKind::Pdf | InputKind::Docx | InputKind::Markdown | InputKind::Image
-        ) {
+        if input_kind.supports_vlm() {
             if let Some(vlm_config) = self.config.resolved_vlm_config()? {
                 form = self.apply_vlm_config(form, &vlm_config)?;
             }
@@ -301,6 +298,7 @@ impl DoclingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::InputKind;
 
     #[test]
     fn build_form_uses_input_media_type_and_format() {
@@ -367,6 +365,26 @@ mod tests {
         assert!(debug.contains("sheet.csv"));
         assert!(debug.contains("csv"));
         assert!(debug.contains("to_formats"));
+    }
+
+    #[test]
+    fn build_form_supports_override_only_second_wave_formats() {
+        let client =
+            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
+
+        let input = InputDocument::new(
+            "filing.xml",
+            "application/xml",
+            Bytes::from_static(b"<article />"),
+        )
+        .with_input_kind(InputKind::XmlJats);
+        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
+
+        let form = client.build_form(&input, &request).unwrap();
+        let debug = format!("{form:?}");
+        assert_eq!(input.kind().unwrap(), InputKind::XmlJats);
+        assert!(debug.contains("application/xml"));
+        assert!(debug.contains("from_formats"));
     }
 
     #[test]

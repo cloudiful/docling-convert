@@ -62,6 +62,33 @@
 
 			<div>
 				<label
+					for="input-format-select"
+					class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+				>
+					{$t.settings.inputFormat}
+				</label>
+				<select
+					id="input-format-select"
+					value={config.input_format ?? ''}
+					onchange={(event) => {
+						const value = (event.currentTarget as HTMLSelectElement).value;
+						onPatch({ input_format: value || null });
+					}}
+					class="form-select w-full px-3 py-2 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg"
+				>
+					<option value="">{$t.settings.inputFormatAuto}</option>
+					<option value="xml_uspto">{$t.settings.inputFormatXmlUspto}</option>
+					<option value="xml_jats">{$t.settings.inputFormatXmlJats}</option>
+					<option value="xml_xbrl">{$t.settings.inputFormatXmlXbrl}</option>
+					<option value="xml_doclang">{$t.settings.inputFormatXmlDoclang}</option>
+					<option value="mets_gbs">{$t.settings.inputFormatMetsGbs}</option>
+					<option value="json_docling">{$t.settings.inputFormatJsonDocling}</option>
+					<option value="latex">{$t.settings.inputFormatLatex}</option>
+				</select>
+			</div>
+
+			<div>
+				<label
 					for="pages-input"
 					class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
 				>

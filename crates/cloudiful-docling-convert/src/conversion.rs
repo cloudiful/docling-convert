@@ -70,36 +70,22 @@ pub fn build_convert_options(
     input_kind: InputKind,
     behavior: &ConversionBehavior,
 ) -> Result<ConvertOptions> {
-    match input_kind {
-        InputKind::Pdf => Ok(ConvertOptions::Pdf(PdfConvertOptions {
+    if matches!(input_kind, InputKind::Pdf) {
+        Ok(ConvertOptions::Pdf(PdfConvertOptions {
             pages_per_file: behavior.pages_per_file,
             split_input: behavior.split_input,
             split_by_bookmark: behavior.split_by_bookmark,
             chunking: behavior.chunking,
             batch_size: behavior.batch_size,
-        })),
-        InputKind::Docx
-        | InputKind::Pptx
-        | InputKind::Html
-        | InputKind::Asciidoc
-        | InputKind::Markdown
-        | InputKind::Csv
-        | InputKind::Xlsx
-        | InputKind::Odt
-        | InputKind::Ods
-        | InputKind::Odp
-        | InputKind::Epub
-        | InputKind::Email
-        | InputKind::Image => {
-            reject_pdf_only_options(input_kind, behavior)?;
-            Ok(ConvertOptions::Generic(GenericFileConvertOptions {
-                chunking: behavior.chunking,
-            }))
-        }
-        InputKind::Text => {
-            reject_pdf_only_options(input_kind, behavior)?;
-            Ok(ConvertOptions::Text(TextConvertOptions::default()))
-        }
+        }))
+    } else if input_kind.uses_generic_convert_options() {
+        reject_pdf_only_options(input_kind, behavior)?;
+        Ok(ConvertOptions::Generic(GenericFileConvertOptions {
+            chunking: behavior.chunking,
+        }))
+    } else {
+        reject_pdf_only_options(input_kind, behavior)?;
+        Ok(ConvertOptions::Text(TextConvertOptions::default()))
     }
 }
 
@@ -158,5 +144,13 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("bookmark splitting"));
+    }
+
+    #[test]
+    fn second_wave_inputs_use_generic_convert_options() {
+        let options =
+            build_convert_options(InputKind::XmlJats, &ConversionBehavior::default()).unwrap();
+
+        assert!(matches!(options, ConvertOptions::Generic(_)));
     }
 }

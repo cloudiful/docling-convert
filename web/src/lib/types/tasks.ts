@@ -2,6 +2,7 @@ export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface TaskConfig {
 	format: string;
+	input_format?: string | null;
 	pages_per_file: number;
 	split_input: boolean;
 	split_by_bookmark: boolean;
@@ -26,6 +27,7 @@ export interface Task {
 
 export const defaultTaskConfig: TaskConfig = {
 	format: 'md',
+	input_format: null,
 	pages_per_file: 5,
 	split_input: true,
 	split_by_bookmark: false,

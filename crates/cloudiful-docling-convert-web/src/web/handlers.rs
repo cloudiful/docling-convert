@@ -14,7 +14,9 @@ use super::conversion::{
     spawn_conversion_task,
 };
 use super::state::{AppState, ConversionTask, TaskConfig, TaskStatus};
-use super::support::{output_content_type, resolve_input_kind, sanitize_filename};
+use super::support::{
+    output_content_type, parse_input_format, resolve_input_kind, sanitize_filename,
+};
 use super::task_config::TaskConfigInput;
 use cloudiful_docling_convert::InputDocument;
 
@@ -63,12 +65,13 @@ pub async fn upload_file(
     let media_type = upload.media_type;
     let data = upload.data;
     let config = upload.config;
-    let input_kind = resolve_input_kind(&file_name, &media_type)?;
+    let input_kind = resolve_input_kind(&file_name, &media_type, config.input_format.as_deref())?;
     let input = InputDocument::new(
         file_name.clone(),
         input_kind.canonical_media_type(&file_name, Some(&media_type)),
         data,
-    );
+    )
+    .with_input_kind(input_kind);
     let total_chunks = estimated_total_chunks_for_input(&input, &config);
 
     let task_id = state
@@ -98,7 +101,7 @@ pub async fn submit_url(
     }
 
     let config = resolve_task_config(payload.config)?;
-    let file_name = derive_url_filename(&url);
+    let file_name = derive_url_filename(&url, config.input_format.as_deref())?;
     let task_id = state
         .create_task(file_name.clone(), config.clone(), 0)
         .await;
@@ -234,7 +237,7 @@ fn resolve_task_config(config: Option<TaskConfigInput>) -> Result<TaskConfig, St
     config.unwrap_or_default().resolve()
 }
 
-fn derive_url_filename(url: &str) -> String {
+fn derive_url_filename(url: &str, input_format: Option<&str>) -> Result<String, StatusCode> {
     let file_name = url.split('/').last().unwrap_or("downloaded");
     let file_name = file_name
         .split('?')
@@ -244,11 +247,21 @@ fn derive_url_filename(url: &str) -> String {
         .next()
         .unwrap_or("downloaded");
 
-    if file_name.is_empty() {
+    let mut file_name = if file_name.is_empty() {
         "downloaded".to_string()
     } else {
         sanitize_filename(file_name)
+    };
+
+    if std::path::Path::new(&file_name).extension().is_none() {
+        if let Some(input_format) = input_format {
+            let input_kind =
+                parse_input_format(input_format).map_err(|_| StatusCode::BAD_REQUEST)?;
+            file_name = format!("{}.{}", file_name, input_kind.default_extension());
+        }
     }
+
+    Ok(file_name)
 }
 
 fn spawn_file_task(state: AppState, task_id: String, input: InputDocument, config: TaskConfig) {

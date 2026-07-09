@@ -43,7 +43,7 @@ impl DocumentConverter {
                 on_progress(1, 1).await;
                 Ok(document)
             }
-            (ConvertOptions::Generic(options), InputKind::Docx | InputKind::Markdown) => {
+            (ConvertOptions::Generic(options), _) if input_kind.uses_generic_convert_options() => {
                 let document = self
                     .convert_generic(&request.input, options, &request.output_formats)
                     .await?;

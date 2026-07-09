@@ -106,6 +106,25 @@ impl PdfConvert {
         ))
         .await
     }
+
+    pub async fn convert_bytes_with_input_kind(
+        &self,
+        filename: impl Into<String>,
+        bytes: impl Into<Bytes>,
+        input_kind: InputKind,
+    ) -> Result<ConvertedDocument> {
+        let filename = filename.into();
+
+        self.convert_input(
+            InputDocument::new(
+                filename.clone(),
+                input_kind.canonical_media_type(&filename, None),
+                bytes,
+            )
+            .with_input_kind(input_kind),
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -155,5 +174,28 @@ mod tests {
             .unwrap_err();
 
         assert!(error.to_string().contains("unsupported input type"));
+    }
+
+    #[test]
+    fn convert_bytes_with_input_kind_accepts_ambiguous_sources() {
+        let converter = ConverterBuilder::new(DoclingRuntimeConfig {
+            docling_base_url: "http://127.0.0.1:5001/v1".into(),
+            openai_base_url: "https://example.com/v1".into(),
+            vlm_pipeline_model: "test-model".into(),
+            picture_description_model: "test-model".into(),
+            code_formula_model: "test-model".into(),
+            api_key: Some("key".into()),
+        })
+        .build()
+        .unwrap();
+
+        let request = converter
+            .request_for_input(
+                InputDocument::new("paper.xml", "application/xml", Bytes::from("<article />"))
+                    .with_input_kind(InputKind::XmlJats),
+            )
+            .unwrap();
+
+        assert_eq!(request.input.kind().unwrap(), InputKind::XmlJats);
     }
 }

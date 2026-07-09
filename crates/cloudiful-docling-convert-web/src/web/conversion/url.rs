@@ -3,6 +3,7 @@ use cloudiful_docling_convert::{InputDocument, InputKind, PdfConvertError};
 use reqwest::Response;
 
 use super::super::state::{AppState, TaskConfig};
+use super::super::support::parse_input_format;
 use super::file::process_file_conversion;
 use super::support::{MAX_REMOTE_DOWNLOAD_BYTES, update_processing_status, validate_pdf_download};
 
@@ -62,16 +63,30 @@ pub async fn process_url_conversion(
     } else {
         fallback_file_name
     };
-    let input_kind = InputKind::from_filename_and_media_type(&file_name, Some(&content_type))
-        .ok_or_else(|| {
-            PdfConvertError::validation_error(
-                "url",
-                format!(
-                    "unsupported downloaded file type '{}', content-type '{}'",
-                    file_name, content_type
-                ),
+    let override_kind = config
+        .input_format
+        .as_deref()
+        .map(parse_input_format)
+        .transpose()?;
+    let detected_kind = InputKind::from_filename_and_media_type(&file_name, Some(&content_type));
+    let input_kind = if let Some(input_kind) = override_kind {
+        input_kind
+    } else if let Some(input_kind) = detected_kind {
+        input_kind
+    } else {
+        let reason = if InputKind::requires_explicit_override(&file_name, Some(&content_type)) {
+            format!(
+                "ambiguous downloaded file type '{}', content-type '{}'; provide input_format",
+                file_name, content_type
             )
-        })?;
+        } else {
+            format!(
+                "unsupported downloaded file type '{}', content-type '{}'",
+                file_name, content_type
+            )
+        };
+        return Err(PdfConvertError::validation_error("url", reason));
+    };
 
     if std::path::Path::new(&file_name).extension().is_none() {
         file_name = format!(
@@ -101,7 +116,8 @@ pub async fn process_url_conversion(
             file_name.clone(),
             input_kind.canonical_media_type(&file_name, Some(&content_type)),
             file_data,
-        ),
+        )
+        .with_input_kind(input_kind),
         config,
     )
     .await

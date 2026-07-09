@@ -20,6 +20,9 @@ export async function uploadTaskFile(
 	const formData = new FormData();
 	formData.append('file', file);
 	formData.append('format', config.format);
+	if (config.input_format) {
+		formData.append('input_format', config.input_format);
+	}
 	formData.append('pages_per_file', config.pages_per_file.toString());
 	formData.append('split_input', config.split_input.toString());
 	formData.append('split_by_bookmark', config.split_by_bookmark.toString());

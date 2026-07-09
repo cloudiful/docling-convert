@@ -7,8 +7,8 @@ use logging::init_logging;
 use bytes::Bytes;
 use clap::Parser;
 use cloudiful_docling_convert::{
-    ConvertRequest, DocumentConverter, FileConvertRequest, InputDocument, PdfConvertError, Result,
-    build_convert_options, build_docling_client, supported_input_kind,
+    ConvertRequest, DocumentConverter, FileConvertRequest, InputDocument, InputKind,
+    PdfConvertError, Result, build_convert_options, build_docling_client, supported_input_kind,
 };
 use log::{error, info};
 
@@ -129,12 +129,30 @@ async fn run_conversions(args: Args) -> Result<()> {
 }
 
 fn collect_input_files(args: &Args) -> Result<Vec<std::path::PathBuf>> {
+    if let Some(input_kind) = args.input_format {
+        return collect_override_input_file(args, input_kind);
+    }
+
     let mut files_to_process = Vec::new();
 
     for path in &args.input_files {
         if path.is_file() {
             if is_supported_input_file(path) {
                 files_to_process.push(path.clone());
+            } else {
+                let file_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("");
+                let reason = if InputKind::requires_explicit_override(file_name, None) {
+                    format!(
+                        "ambiguous input type for '{}'; use --input-format to choose the Docling source format",
+                        path.display()
+                    )
+                } else {
+                    format!("unsupported file type for '{}'", path.display())
+                };
+                return Err(PdfConvertError::validation_error("input_path", reason));
             }
             continue;
         }
@@ -162,6 +180,45 @@ fn collect_input_files(args: &Args) -> Result<Vec<std::path::PathBuf>> {
     Ok(files_to_process)
 }
 
+fn collect_override_input_file(
+    args: &Args,
+    input_kind: InputKind,
+) -> Result<Vec<std::path::PathBuf>> {
+    if args.input_files.len() != 1 {
+        return Err(PdfConvertError::validation_error(
+            "input_format",
+            format!(
+                "--input-format {} requires exactly one input file path",
+                input_kind
+            ),
+        ));
+    }
+
+    let path = args
+        .input_files
+        .first()
+        .expect("checked input file count above");
+
+    if path.is_dir() {
+        return Err(PdfConvertError::validation_error(
+            "input_format",
+            format!(
+                "--input-format {} only supports a single file input, not directory scanning",
+                input_kind
+            ),
+        ));
+    }
+
+    if !path.is_file() {
+        return Err(PdfConvertError::validation_error(
+            "input_path",
+            format!("input file does not exist: {}", path.display()),
+        ));
+    }
+
+    Ok(vec![path.clone()])
+}
+
 fn is_supported_input_file(path: &std::path::Path) -> bool {
     path.is_file() && supported_input_kind(path)
 }
@@ -171,7 +228,14 @@ async fn convert_single_file(file_path: std::path::PathBuf, args: Args) -> Resul
         PdfConvertError::io_error(format!("reading input file: {}", file_path.display()), e)
     })?;
 
-    let input = InputDocument::from_path_and_bytes(&file_path, Bytes::from(file_bytes))?;
+    let input = match args.input_format {
+        Some(input_kind) => InputDocument::from_path_and_bytes_with_kind(
+            &file_path,
+            Bytes::from(file_bytes),
+            input_kind,
+        )?,
+        None => InputDocument::from_path_and_bytes(&file_path, Bytes::from(file_bytes))?,
+    };
     let input_kind = input.kind()?;
     let converter = DocumentConverter::new(create_docling_client(&args)?);
     converter
@@ -192,4 +256,53 @@ async fn convert_single_file(file_path: std::path::PathBuf, args: Args) -> Resul
 
 fn create_docling_client(args: &Args) -> Result<cloudiful_docling_convert::DoclingClient> {
     build_docling_client(args.runtime_config())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::args::Args;
+    use clap::Parser;
+
+    #[test]
+    fn input_format_rejects_directory_scan() {
+        let args = Args::try_parse_from([
+            "cloudiful-docling-convert",
+            "--input-format",
+            "xml_jats",
+            ".",
+        ])
+        .unwrap();
+
+        let err = collect_input_files(&args).unwrap_err();
+        assert!(err.to_string().contains("directory scanning"));
+    }
+
+    #[test]
+    fn input_format_rejects_multiple_paths() {
+        let args = Args::try_parse_from([
+            "cloudiful-docling-convert",
+            "--input-format",
+            "xml_jats",
+            "a.xml",
+            "b.xml",
+        ])
+        .unwrap();
+
+        let err = collect_input_files(&args).unwrap_err();
+        assert!(err.to_string().contains("exactly one input file path"));
+    }
+
+    #[test]
+    fn ambiguous_xml_file_requires_input_format_override() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("paper.xml");
+        std::fs::write(&path, "<article />").unwrap();
+
+        let args =
+            Args::try_parse_from(["cloudiful-docling-convert", path.to_str().unwrap()]).unwrap();
+
+        let err = collect_input_files(&args).unwrap_err();
+        assert!(err.to_string().contains("--input-format"));
+    }
 }

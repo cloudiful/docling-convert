@@ -44,6 +44,9 @@
 		'.tiff',
 		'.webp',
 		'.svg',
+		'.xml',
+		'.json',
+		'.tex',
 		'.txt'
 	];
 	const acceptedFormats = supportedExtensions.join(',');

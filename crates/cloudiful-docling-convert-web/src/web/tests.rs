@@ -193,6 +193,39 @@ async fn test_upload_accepts_csv() {
 }
 
 #[tokio::test]
+async fn test_upload_rejects_ambiguous_xml_without_override() {
+    let state = create_test_state();
+    let app: Router = create_router(state);
+
+    let request = create_multipart_request("paper.xml", "application/xml", b"<article />", &[]);
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_upload_accepts_xml_with_override() {
+    let state = create_test_state();
+    let task_state = state.clone();
+    let app: Router = create_router(state);
+
+    let request = create_multipart_request(
+        "paper.xml",
+        "application/xml",
+        b"<article />",
+        &[("input_format", "xml_jats")],
+    );
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert_eq!(task.config.input_format.as_deref(), Some("xml_jats"));
+    assert_eq!(task.filename, "paper.xml");
+}
+
+#[tokio::test]
 async fn test_upload_unsupported_file_type() {
     let state = create_test_state();
     let app: Router = create_router(state);
@@ -327,6 +360,32 @@ async fn test_submit_url_invalid_format() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_submit_url_adds_extension_from_input_format_override() {
+    let state = create_test_state();
+    let task_state = state.clone();
+    let app: Router = create_router(state);
+
+    let request = Request::builder()
+        .uri("/api/convert/url")
+        .method("POST")
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            r#"{"url":"https://example.com/download","config":{"input_format":"json_docling"}}"#,
+        ))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    assert_eq!(json["filename"], "download.json");
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert_eq!(task.filename, "download.json");
+    assert_eq!(task.config.input_format.as_deref(), Some("json_docling"));
 }
 
 #[tokio::test]

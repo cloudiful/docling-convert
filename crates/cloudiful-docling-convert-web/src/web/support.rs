@@ -44,9 +44,26 @@ pub fn parse_output_format(value: &str) -> Result<OutputFormat, PdfConvertError>
     OutputFormat::from_str(value)
 }
 
-pub fn resolve_input_kind(file_name: &str, media_type: &str) -> Result<InputKind, StatusCode> {
-    InputKind::from_filename_and_media_type(file_name, Some(media_type))
-        .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)
+pub fn parse_input_format(value: &str) -> Result<InputKind, PdfConvertError> {
+    InputKind::from_str(value)
+}
+
+pub fn resolve_input_kind(
+    file_name: &str,
+    media_type: &str,
+    input_format: Option<&str>,
+) -> Result<InputKind, StatusCode> {
+    if let Some(input_format) = input_format {
+        return parse_input_format(input_format).map_err(|_| StatusCode::BAD_REQUEST);
+    }
+
+    InputKind::from_filename_and_media_type(file_name, Some(media_type)).ok_or(
+        if InputKind::requires_explicit_override(file_name, Some(media_type)) {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::UNSUPPORTED_MEDIA_TYPE
+        },
+    )
 }
 
 pub fn create_docling_client(state: &AppState) -> Result<DoclingClient, PdfConvertError> {

@@ -4,11 +4,12 @@ use axum::http::StatusCode;
 use serde::Deserialize;
 
 use super::state::TaskConfig;
-use super::support::parse_output_format;
+use super::support::{parse_input_format, parse_output_format};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TaskConfigInput {
     pub format: Option<String>,
+    pub input_format: Option<String>,
     pub pages_per_file: Option<u32>,
     pub split_input: Option<bool>,
     pub split_by_bookmark: Option<bool>,
@@ -23,6 +24,11 @@ impl TaskConfigInput {
         if let Some(format) = self.format {
             parse_output_format(&format).map_err(|_| StatusCode::BAD_REQUEST)?;
             config.format = format;
+        }
+
+        if let Some(input_format) = self.input_format {
+            parse_input_format(&input_format).map_err(|_| StatusCode::BAD_REQUEST)?;
+            config.input_format = Some(input_format);
         }
 
         if let Some(pages_per_file) = self.pages_per_file {
@@ -55,6 +61,7 @@ impl TaskConfigInput {
     pub fn from_multipart_fields(fields: &HashMap<String, String>) -> Result<Self, StatusCode> {
         Ok(Self {
             format: fields.get("format").cloned(),
+            input_format: fields.get("input_format").cloned(),
             pages_per_file: parse_optional(fields, "pages_per_file")?,
             split_input: parse_optional_bool(fields, "split_input")?,
             split_by_bookmark: parse_optional_bool(fields, "split_by_bookmark")?,
@@ -105,6 +112,7 @@ mod tests {
     fn parses_multipart_values() {
         let fields = HashMap::from([
             ("format".to_string(), "json".to_string()),
+            ("input_format".to_string(), "xml_jats".to_string()),
             ("pages_per_file".to_string(), "9".to_string()),
             ("split_input".to_string(), "false".to_string()),
             ("split_by_bookmark".to_string(), "true".to_string()),
@@ -118,6 +126,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(config.format, "json");
+        assert_eq!(config.input_format.as_deref(), Some("xml_jats"));
         assert_eq!(config.pages_per_file, 9);
         assert!(!config.split_input);
         assert!(config.split_by_bookmark);

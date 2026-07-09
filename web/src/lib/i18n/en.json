@@ -11,7 +11,7 @@
     "dragDrop": "Drag and drop a supported document here, or click to browse",
     "browse": "Browse Files",
     "uploading": "Uploading...",
-    "formats": "Supports PDF, DOCX, PPTX, HTML, AsciiDoc, CSV, XLSX, ODT/ODS/ODP, EPUB, email, image, Markdown, and text files"
+    "formats": "Supports PDF, DOCX, PPTX, HTML, AsciiDoc, CSV, XLSX, ODT/ODS/ODP, EPUB, email, image, Markdown, text, XML, JSON, and LaTeX files"
   },
   "url": {
     "title": "Convert from URL",
@@ -28,6 +28,15 @@
     "formatText": "Text",
     "formatHtml": "HTML",
     "formatDoctags": "DocTags",
+    "inputFormat": "Input Format",
+    "inputFormatAuto": "Auto",
+    "inputFormatXmlUspto": "XML USPTO",
+    "inputFormatXmlJats": "XML JATS",
+    "inputFormatXmlXbrl": "XML XBRL",
+    "inputFormatXmlDoclang": "XML Docling",
+    "inputFormatMetsGbs": "METS GBS",
+    "inputFormatJsonDocling": "JSON Docling",
+    "inputFormatLatex": "LaTeX",
     "pagesPerFile": "Pages per file",
     "batchSize": "Batch size",
     "splitInput": "Split input PDF",

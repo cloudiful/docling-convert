@@ -1,5 +1,7 @@
 use clap::{ArgAction, Parser};
-use cloudiful_docling_convert::{ConversionBehavior, DoclingRuntimeConfig, OutputFormat};
+use cloudiful_docling_convert::{
+    ConversionBehavior, DoclingRuntimeConfig, InputKind, OutputFormat,
+};
 use std::path::PathBuf;
 
 fn parse_positive_u32(value: &str) -> Result<u32, String> {
@@ -25,6 +27,12 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
 fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
     value
         .parse::<OutputFormat>()
+        .map_err(|error| error.to_string())
+}
+
+fn parse_input_format(value: &str) -> Result<InputKind, String> {
+    value
+        .parse::<InputKind>()
         .map_err(|error| error.to_string())
 }
 
@@ -83,6 +91,14 @@ pub struct Args {
         help = "Output format: json, md, text, html, or doctags (default: md)"
     )]
     pub format: OutputFormat,
+
+    #[arg(
+        long,
+        value_parser = parse_input_format,
+        value_name = "FORMAT",
+        help = "Explicit input format override for ambiguous files such as .xml/.json. Supports xml_uspto, xml_jats, xml_xbrl, xml_doclang, mets_gbs, json_docling, and latex"
+    )]
+    pub input_format: Option<InputKind>,
 
     #[arg(
         long,
@@ -189,6 +205,19 @@ mod tests {
 
         assert_eq!(args.format, OutputFormat::Html);
         assert!(!args.split_input);
+    }
+
+    #[test]
+    fn parses_input_format_override() {
+        let args = Args::try_parse_from([
+            "cloudiful-docling-convert",
+            "--input-format",
+            "xml_jats",
+            "paper.xml",
+        ])
+        .expect("CLI arguments should parse");
+
+        assert_eq!(args.input_format, Some(InputKind::XmlJats));
     }
 
     #[test]
