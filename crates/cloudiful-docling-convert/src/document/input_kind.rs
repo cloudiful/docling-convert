@@ -32,6 +32,325 @@ pub enum InputKind {
     Text,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct InputKindSpec {
+    kind: InputKind,
+    extensions: &'static [&'static str],
+    media_types: &'static [&'static str],
+    default_extension: &'static str,
+    default_media_type: &'static str,
+    from_formats_value: &'static str,
+    parse_aliases: &'static [&'static str],
+    reading_label: &'static str,
+    auto_detect: bool,
+    generic_convert_options: bool,
+    supports_vlm: bool,
+}
+
+const INPUT_KIND_SPECS: &[InputKindSpec] = &[
+    InputKindSpec {
+        kind: InputKind::Pdf,
+        extensions: &["pdf"],
+        media_types: &["application/pdf"],
+        default_extension: "pdf",
+        default_media_type: "application/pdf",
+        from_formats_value: "pdf",
+        parse_aliases: &["pdf"],
+        reading_label: "Reading PDF...",
+        auto_detect: true,
+        generic_convert_options: false,
+        supports_vlm: true,
+    },
+    InputKindSpec {
+        kind: InputKind::Docx,
+        extensions: &["docx"],
+        media_types: &["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+        default_extension: "docx",
+        default_media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        from_formats_value: "docx",
+        parse_aliases: &["docx"],
+        reading_label: "Reading DOCX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: true,
+    },
+    InputKindSpec {
+        kind: InputKind::Pptx,
+        extensions: &["pptx"],
+        media_types: &["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+        default_extension: "pptx",
+        default_media_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        from_formats_value: "pptx",
+        parse_aliases: &["pptx"],
+        reading_label: "Reading PPTX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Html,
+        extensions: &["html", "htm", "xhtml"],
+        media_types: &["text/html", "application/xhtml+xml"],
+        default_extension: "html",
+        default_media_type: "text/html",
+        from_formats_value: "html",
+        parse_aliases: &["html"],
+        reading_label: "Reading HTML...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Asciidoc,
+        extensions: &["adoc", "asciidoc", "asc"],
+        media_types: &["text/asciidoc", "text/x-asciidoc"],
+        default_extension: "adoc",
+        default_media_type: "text/asciidoc",
+        from_formats_value: "asciidoc",
+        parse_aliases: &["asciidoc", "adoc"],
+        reading_label: "Reading AsciiDoc...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Markdown,
+        extensions: &["md", "markdown"],
+        media_types: &["text/markdown", "text/x-markdown"],
+        default_extension: "md",
+        default_media_type: "text/markdown",
+        from_formats_value: "md",
+        parse_aliases: &["markdown", "md"],
+        reading_label: "Reading Markdown...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: true,
+    },
+    InputKindSpec {
+        kind: InputKind::Csv,
+        extensions: &["csv"],
+        media_types: &["text/csv", "application/csv"],
+        default_extension: "csv",
+        default_media_type: "text/csv",
+        from_formats_value: "csv",
+        parse_aliases: &["csv"],
+        reading_label: "Reading CSV...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Xlsx,
+        extensions: &["xlsx"],
+        media_types: &["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+        default_extension: "xlsx",
+        default_media_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        from_formats_value: "xlsx",
+        parse_aliases: &["xlsx"],
+        reading_label: "Reading XLSX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Odt,
+        extensions: &["odt"],
+        media_types: &["application/vnd.oasis.opendocument.text"],
+        default_extension: "odt",
+        default_media_type: "application/vnd.oasis.opendocument.text",
+        from_formats_value: "odt",
+        parse_aliases: &["odt"],
+        reading_label: "Reading ODT...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Ods,
+        extensions: &["ods"],
+        media_types: &["application/vnd.oasis.opendocument.spreadsheet"],
+        default_extension: "ods",
+        default_media_type: "application/vnd.oasis.opendocument.spreadsheet",
+        from_formats_value: "ods",
+        parse_aliases: &["ods"],
+        reading_label: "Reading ODS...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Odp,
+        extensions: &["odp"],
+        media_types: &["application/vnd.oasis.opendocument.presentation"],
+        default_extension: "odp",
+        default_media_type: "application/vnd.oasis.opendocument.presentation",
+        from_formats_value: "odp",
+        parse_aliases: &["odp"],
+        reading_label: "Reading ODP...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Epub,
+        extensions: &["epub"],
+        media_types: &["application/epub+zip"],
+        default_extension: "epub",
+        default_media_type: "application/epub+zip",
+        from_formats_value: "epub",
+        parse_aliases: &["epub"],
+        reading_label: "Reading EPUB...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Email,
+        extensions: &["eml", "msg"],
+        media_types: &["message/rfc822", "application/vnd.ms-outlook"],
+        default_extension: "eml",
+        default_media_type: "message/rfc822",
+        from_formats_value: "email",
+        parse_aliases: &["email", "eml", "msg"],
+        reading_label: "Reading email...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Image,
+        extensions: &[
+            "png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff", "webp", "svg",
+        ],
+        media_types: &[
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/bmp",
+            "image/tiff",
+            "image/webp",
+            "image/svg+xml",
+        ],
+        default_extension: "png",
+        default_media_type: "image/png",
+        from_formats_value: "image",
+        parse_aliases: &["image"],
+        reading_label: "Reading image...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: true,
+    },
+    InputKindSpec {
+        kind: InputKind::XmlUspto,
+        extensions: &["xml"],
+        media_types: &["application/xml", "text/xml"],
+        default_extension: "xml",
+        default_media_type: "application/xml",
+        from_formats_value: "xml_uspto",
+        parse_aliases: &["xml_uspto"],
+        reading_label: "Reading XML USPTO...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::XmlJats,
+        extensions: &["xml"],
+        media_types: &["application/xml", "text/xml"],
+        default_extension: "xml",
+        default_media_type: "application/xml",
+        from_formats_value: "xml_jats",
+        parse_aliases: &["xml_jats"],
+        reading_label: "Reading XML JATS...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::XmlXbrl,
+        extensions: &["xml"],
+        media_types: &["application/xml", "text/xml"],
+        default_extension: "xml",
+        default_media_type: "application/xml",
+        from_formats_value: "xml_xbrl",
+        parse_aliases: &["xml_xbrl"],
+        reading_label: "Reading XML XBRL...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::XmlDoclang,
+        extensions: &["xml"],
+        media_types: &["application/xml", "text/xml"],
+        default_extension: "xml",
+        default_media_type: "application/xml",
+        from_formats_value: "xml_doclang",
+        parse_aliases: &["xml_doclang"],
+        reading_label: "Reading XML Docling...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::MetsGbs,
+        extensions: &["xml"],
+        media_types: &["application/xml", "text/xml"],
+        default_extension: "xml",
+        default_media_type: "application/xml",
+        from_formats_value: "mets_gbs",
+        parse_aliases: &["mets_gbs"],
+        reading_label: "Reading METS GBS...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::JsonDocling,
+        extensions: &["json"],
+        media_types: &["application/json", "text/json"],
+        default_extension: "json",
+        default_media_type: "application/json",
+        from_formats_value: "json_docling",
+        parse_aliases: &["json_docling"],
+        reading_label: "Reading JSON Docling...",
+        auto_detect: false,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Latex,
+        extensions: &["tex"],
+        media_types: &[
+            "application/x-tex",
+            "application/x-latex",
+            "text/x-tex",
+            "text/x-latex",
+        ],
+        default_extension: "tex",
+        default_media_type: "application/x-tex",
+        from_formats_value: "latex",
+        parse_aliases: &["latex", "tex"],
+        reading_label: "Reading LaTeX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Text,
+        extensions: &["txt"],
+        media_types: &["text/plain"],
+        default_extension: "txt",
+        default_media_type: "text/plain",
+        from_formats_value: "text",
+        parse_aliases: &["text", "txt"],
+        reading_label: "Reading text file...",
+        auto_detect: true,
+        generic_convert_options: false,
+        supports_vlm: false,
+    },
+];
+
 impl InputKind {
     pub fn from_path(path: &Path) -> Option<Self> {
         let file_name = path.file_name().and_then(|name| name.to_str())?;
@@ -42,77 +361,11 @@ impl InputKind {
         let ext = normalized_extension(filename);
         let media_type = normalized_media_type(media_type);
 
-        match (ext.as_deref(), media_type.as_deref()) {
-            (Some("pdf"), _) | (_, Some("application/pdf")) => Some(Self::Pdf),
-            (Some("docx"), _)
-            | (
-                _,
-                Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            ) => Some(Self::Docx),
-            (Some("pptx"), _)
-            | (
-                _,
-                Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-            ) => Some(Self::Pptx),
-            (Some("html"), _)
-            | (Some("htm"), _)
-            | (Some("xhtml"), _)
-            | (_, Some("text/html"))
-            | (_, Some("application/xhtml+xml")) => Some(Self::Html),
-            (Some("adoc"), _)
-            | (Some("asciidoc"), _)
-            | (Some("asc"), _)
-            | (_, Some("text/asciidoc"))
-            | (_, Some("text/x-asciidoc")) => Some(Self::Asciidoc),
-            (Some("md"), _)
-            | (Some("markdown"), _)
-            | (_, Some("text/markdown"))
-            | (_, Some("text/x-markdown")) => Some(Self::Markdown),
-            (Some("csv"), _) | (_, Some("text/csv")) | (_, Some("application/csv")) => {
-                Some(Self::Csv)
-            }
-            (Some("xlsx"), _)
-            | (_, Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) => {
-                Some(Self::Xlsx)
-            }
-            (Some("odt"), _) | (_, Some("application/vnd.oasis.opendocument.text")) => {
-                Some(Self::Odt)
-            }
-            (Some("ods"), _) | (_, Some("application/vnd.oasis.opendocument.spreadsheet")) => {
-                Some(Self::Ods)
-            }
-            (Some("odp"), _) | (_, Some("application/vnd.oasis.opendocument.presentation")) => {
-                Some(Self::Odp)
-            }
-            (Some("epub"), _) | (_, Some("application/epub+zip")) => Some(Self::Epub),
-            (Some("eml"), _)
-            | (Some("msg"), _)
-            | (_, Some("message/rfc822"))
-            | (_, Some("application/vnd.ms-outlook")) => Some(Self::Email),
-            (Some("png"), _)
-            | (Some("jpg"), _)
-            | (Some("jpeg"), _)
-            | (Some("gif"), _)
-            | (Some("bmp"), _)
-            | (Some("tif"), _)
-            | (Some("tiff"), _)
-            | (Some("webp"), _)
-            | (Some("svg"), _)
-            | (_, Some("image/png"))
-            | (_, Some("image/jpeg"))
-            | (_, Some("image/gif"))
-            | (_, Some("image/bmp"))
-            | (_, Some("image/tiff"))
-            | (_, Some("image/webp"))
-            | (_, Some("image/svg+xml")) => Some(Self::Image),
-            (Some("tex"), _)
-            | (_, Some("application/x-tex"))
-            | (_, Some("application/x-latex"))
-            | (_, Some("text/x-tex"))
-            | (_, Some("text/x-latex")) => Some(Self::Latex),
-            (Some("txt"), _) | (_, Some("text/plain")) => Some(Self::Text),
-            _ => None,
+        if Self::requires_explicit_override(filename, media_type.as_deref()) {
+            return None;
         }
+
+        detect_auto_kind(ext.as_deref(), media_type.as_deref())
     }
 
     pub fn requires_explicit_override(filename: &str, media_type: Option<&str>) -> bool {
@@ -130,30 +383,7 @@ impl InputKind {
     }
 
     pub fn media_type(self) -> &'static str {
-        match self {
-            Self::Pdf => "application/pdf",
-            Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            Self::Pptx => {
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            }
-            Self::Html => "text/html",
-            Self::Asciidoc => "text/asciidoc",
-            Self::Markdown => "text/markdown",
-            Self::Csv => "text/csv",
-            Self::Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            Self::Odt => "application/vnd.oasis.opendocument.text",
-            Self::Ods => "application/vnd.oasis.opendocument.spreadsheet",
-            Self::Odp => "application/vnd.oasis.opendocument.presentation",
-            Self::Epub => "application/epub+zip",
-            Self::Email => "message/rfc822",
-            Self::Image => "image/png",
-            Self::XmlUspto | Self::XmlJats | Self::XmlXbrl | Self::XmlDoclang | Self::MetsGbs => {
-                "application/xml"
-            }
-            Self::JsonDocling => "application/json",
-            Self::Latex => "application/x-tex",
-            Self::Text => "text/plain",
-        }
+        self.spec().default_media_type
     }
 
     pub fn canonical_media_type(self, filename: &str, media_type: Option<&str>) -> &'static str {
@@ -163,51 +393,21 @@ impl InputKind {
         match self {
             Self::Html => match (ext.as_deref(), media_type.as_deref()) {
                 (Some("xhtml"), _) | (_, Some("application/xhtml+xml")) => "application/xhtml+xml",
-                _ => "text/html",
+                _ => self.media_type(),
             },
-            Self::Asciidoc => "text/asciidoc",
             Self::Email => match (ext.as_deref(), media_type.as_deref()) {
                 (Some("msg"), _) | (_, Some("application/vnd.ms-outlook")) => {
                     "application/vnd.ms-outlook"
                 }
-                _ => "message/rfc822",
+                _ => self.media_type(),
             },
-            Self::Image => match (ext.as_deref(), media_type.as_deref()) {
-                (Some("jpg"), _) | (Some("jpeg"), _) | (_, Some("image/jpeg")) => "image/jpeg",
-                (Some("gif"), _) | (_, Some("image/gif")) => "image/gif",
-                (Some("bmp"), _) | (_, Some("image/bmp")) => "image/bmp",
-                (Some("tif"), _) | (Some("tiff"), _) | (_, Some("image/tiff")) => "image/tiff",
-                (Some("webp"), _) | (_, Some("image/webp")) => "image/webp",
-                (Some("svg"), _) | (_, Some("image/svg+xml")) => "image/svg+xml",
-                _ => "image/png",
-            },
+            Self::Image => image_media_type(ext.as_deref(), media_type.as_deref()),
             _ => self.media_type(),
         }
     }
 
     pub fn default_extension(self) -> &'static str {
-        match self {
-            Self::Pdf => "pdf",
-            Self::Docx => "docx",
-            Self::Pptx => "pptx",
-            Self::Html => "html",
-            Self::Asciidoc => "adoc",
-            Self::Markdown => "md",
-            Self::Csv => "csv",
-            Self::Xlsx => "xlsx",
-            Self::Odt => "odt",
-            Self::Ods => "ods",
-            Self::Odp => "odp",
-            Self::Epub => "epub",
-            Self::Email => "eml",
-            Self::Image => "png",
-            Self::XmlUspto | Self::XmlJats | Self::XmlXbrl | Self::XmlDoclang | Self::MetsGbs => {
-                "xml"
-            }
-            Self::JsonDocling => "json",
-            Self::Latex => "tex",
-            Self::Text => "txt",
-        }
+        self.spec().default_extension
     }
 
     pub fn default_extension_for_media_type(self, media_type: Option<&str>) -> &'static str {
@@ -216,85 +416,38 @@ impl InputKind {
         match self {
             Self::Html => match media_type.as_deref() {
                 Some("application/xhtml+xml") => "xhtml",
-                _ => "html",
+                _ => self.default_extension(),
             },
             Self::Email => match media_type.as_deref() {
                 Some("application/vnd.ms-outlook") => "msg",
-                _ => "eml",
+                _ => self.default_extension(),
             },
-            Self::Image => match media_type.as_deref() {
-                Some("image/jpeg") => "jpg",
-                Some("image/gif") => "gif",
-                Some("image/bmp") => "bmp",
-                Some("image/tiff") => "tiff",
-                Some("image/webp") => "webp",
-                Some("image/svg+xml") => "svg",
-                _ => "png",
-            },
+            Self::Image => image_extension(media_type.as_deref()),
             _ => self.default_extension(),
         }
     }
 
     pub fn reading_label(self) -> &'static str {
-        match self {
-            Self::Pdf => "Reading PDF...",
-            Self::Docx => "Reading DOCX...",
-            Self::Pptx => "Reading PPTX...",
-            Self::Html => "Reading HTML...",
-            Self::Asciidoc => "Reading AsciiDoc...",
-            Self::Markdown => "Reading Markdown...",
-            Self::Csv => "Reading CSV...",
-            Self::Xlsx => "Reading XLSX...",
-            Self::Odt => "Reading ODT...",
-            Self::Ods => "Reading ODS...",
-            Self::Odp => "Reading ODP...",
-            Self::Epub => "Reading EPUB...",
-            Self::Email => "Reading email...",
-            Self::Image => "Reading image...",
-            Self::XmlUspto => "Reading XML USPTO...",
-            Self::XmlJats => "Reading XML JATS...",
-            Self::XmlXbrl => "Reading XML XBRL...",
-            Self::XmlDoclang => "Reading XML Docling...",
-            Self::MetsGbs => "Reading METS GBS...",
-            Self::JsonDocling => "Reading JSON Docling...",
-            Self::Latex => "Reading LaTeX...",
-            Self::Text => "Reading text file...",
-        }
+        self.spec().reading_label
     }
 
     pub fn from_formats_value(self) -> &'static str {
-        match self {
-            Self::Pdf => "pdf",
-            Self::Docx => "docx",
-            Self::Pptx => "pptx",
-            Self::Html => "html",
-            Self::Asciidoc => "asciidoc",
-            Self::Markdown => "md",
-            Self::Csv => "csv",
-            Self::Xlsx => "xlsx",
-            Self::Odt => "odt",
-            Self::Ods => "ods",
-            Self::Odp => "odp",
-            Self::Epub => "epub",
-            Self::Email => "email",
-            Self::Image => "image",
-            Self::XmlUspto => "xml_uspto",
-            Self::XmlJats => "xml_jats",
-            Self::XmlXbrl => "xml_xbrl",
-            Self::XmlDoclang => "xml_doclang",
-            Self::MetsGbs => "mets_gbs",
-            Self::JsonDocling => "json_docling",
-            Self::Latex => "latex",
-            Self::Text => "text",
-        }
+        self.spec().from_formats_value
     }
 
     pub fn uses_generic_convert_options(self) -> bool {
-        !matches!(self, Self::Pdf | Self::Text)
+        self.spec().generic_convert_options
     }
 
     pub fn supports_vlm(self) -> bool {
-        matches!(self, Self::Pdf | Self::Docx | Self::Markdown | Self::Image)
+        self.spec().supports_vlm
+    }
+
+    fn spec(self) -> &'static InputKindSpec {
+        INPUT_KIND_SPECS
+            .iter()
+            .find(|spec| spec.kind == self)
+            .expect("missing InputKindSpec")
     }
 }
 
@@ -308,34 +461,53 @@ impl FromStr for InputKind {
     type Err = PdfConvertError;
 
     fn from_str(value: &str) -> Result<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "pdf" => Ok(Self::Pdf),
-            "docx" => Ok(Self::Docx),
-            "pptx" => Ok(Self::Pptx),
-            "html" => Ok(Self::Html),
-            "asciidoc" | "adoc" => Ok(Self::Asciidoc),
-            "markdown" | "md" => Ok(Self::Markdown),
-            "csv" => Ok(Self::Csv),
-            "xlsx" => Ok(Self::Xlsx),
-            "odt" => Ok(Self::Odt),
-            "ods" => Ok(Self::Ods),
-            "odp" => Ok(Self::Odp),
-            "epub" => Ok(Self::Epub),
-            "email" | "eml" | "msg" => Ok(Self::Email),
-            "image" => Ok(Self::Image),
-            "xml_uspto" => Ok(Self::XmlUspto),
-            "xml_jats" => Ok(Self::XmlJats),
-            "xml_xbrl" => Ok(Self::XmlXbrl),
-            "xml_doclang" => Ok(Self::XmlDoclang),
-            "mets_gbs" => Ok(Self::MetsGbs),
-            "json_docling" => Ok(Self::JsonDocling),
-            "latex" | "tex" => Ok(Self::Latex),
-            "text" | "txt" => Ok(Self::Text),
-            other => Err(PdfConvertError::validation_error(
-                "input_format",
-                format!("unsupported input format: {}", other),
-            )),
-        }
+        let normalized = value.trim().to_ascii_lowercase();
+
+        INPUT_KIND_SPECS
+            .iter()
+            .find(|spec| spec.parse_aliases.contains(&normalized.as_str()))
+            .map(|spec| spec.kind)
+            .ok_or_else(|| {
+                PdfConvertError::validation_error(
+                    "input_format",
+                    format!("unsupported input format: {}", normalized),
+                )
+            })
+    }
+}
+
+fn detect_auto_kind(extension: Option<&str>, media_type: Option<&str>) -> Option<InputKind> {
+    INPUT_KIND_SPECS
+        .iter()
+        .filter(|spec| spec.auto_detect)
+        .find(|spec| {
+            extension.is_some_and(|ext| spec.extensions.contains(&ext))
+                || media_type.is_some_and(|mime| spec.media_types.contains(&mime))
+        })
+        .map(|spec| spec.kind)
+}
+
+fn image_media_type(extension: Option<&str>, media_type: Option<&str>) -> &'static str {
+    match (extension, media_type) {
+        (Some("jpg" | "jpeg"), _) | (_, Some("image/jpeg")) => "image/jpeg",
+        (Some("gif"), _) | (_, Some("image/gif")) => "image/gif",
+        (Some("bmp"), _) | (_, Some("image/bmp")) => "image/bmp",
+        (Some("tif" | "tiff"), _) | (_, Some("image/tiff")) => "image/tiff",
+        (Some("webp"), _) | (_, Some("image/webp")) => "image/webp",
+        (Some("svg"), _) | (_, Some("image/svg+xml")) => "image/svg+xml",
+        _ => "image/png",
+    }
+}
+
+fn image_extension(media_type: Option<&str>) -> &'static str {
+    match media_type {
+        Some("image/jpeg") => "jpg",
+        Some("image/gif") => "gif",
+        Some("image/bmp") => "bmp",
+        Some("image/tiff") => "tiff",
+        Some("image/webp") => "webp",
+        Some("image/svg+xml") => "svg",
+        _ => "png",
     }
 }
 
@@ -362,71 +534,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detects_first_wave_and_latex_input_kinds() {
-        assert_eq!(
-            InputKind::from_path(Path::new("a.pdf")),
-            Some(InputKind::Pdf)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.docx")),
-            Some(InputKind::Docx)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.pptx")),
-            Some(InputKind::Pptx)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.html")),
-            Some(InputKind::Html)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.adoc")),
-            Some(InputKind::Asciidoc)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.md")),
-            Some(InputKind::Markdown)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.csv")),
-            Some(InputKind::Csv)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.xlsx")),
-            Some(InputKind::Xlsx)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.odt")),
-            Some(InputKind::Odt)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.ods")),
-            Some(InputKind::Ods)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.odp")),
-            Some(InputKind::Odp)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.epub")),
-            Some(InputKind::Epub)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.eml")),
-            Some(InputKind::Email)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.png")),
-            Some(InputKind::Image)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.tex")),
-            Some(InputKind::Latex)
-        );
-        assert_eq!(
-            InputKind::from_path(Path::new("a.txt")),
-            Some(InputKind::Text)
-        );
+    fn metadata_methods_match_specs() {
+        for spec in INPUT_KIND_SPECS {
+            assert_eq!(spec.kind.default_extension(), spec.default_extension);
+            assert_eq!(spec.kind.media_type(), spec.default_media_type);
+            assert_eq!(spec.kind.from_formats_value(), spec.from_formats_value);
+            assert_eq!(spec.kind.reading_label(), spec.reading_label);
+            assert_eq!(
+                spec.kind.uses_generic_convert_options(),
+                spec.generic_convert_options
+            );
+            assert_eq!(spec.kind.supports_vlm(), spec.supports_vlm);
+        }
+    }
+
+    #[test]
+    fn detects_first_wave_and_latex_input_kinds_from_extension() {
+        for spec in INPUT_KIND_SPECS.iter().filter(|spec| spec.auto_detect) {
+            for extension in spec.extensions {
+                let filename = format!("sample.{}", extension);
+                assert_eq!(
+                    InputKind::from_path(Path::new(&filename)),
+                    Some(spec.kind),
+                    "failed to detect extension '{}'",
+                    extension
+                );
+            }
+        }
     }
 
     #[test]
@@ -445,88 +579,16 @@ mod tests {
 
     #[test]
     fn detects_supported_input_kinds_from_mime_type() {
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("application/pdf")),
-            Some(InputKind::Pdf)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            ),
-            Some(InputKind::Docx)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.openxmlformats-officedocument.presentationml.presentation")
-            ),
-            Some(InputKind::Pptx)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("application/xhtml+xml")),
-            Some(InputKind::Html)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("text/asciidoc")),
-            Some(InputKind::Asciidoc)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("text/markdown")),
-            Some(InputKind::Markdown)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("text/csv")),
-            Some(InputKind::Csv)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            ),
-            Some(InputKind::Xlsx)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.oasis.opendocument.text")
-            ),
-            Some(InputKind::Odt)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.oasis.opendocument.spreadsheet")
-            ),
-            Some(InputKind::Ods)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type(
-                "upload",
-                Some("application/vnd.oasis.opendocument.presentation")
-            ),
-            Some(InputKind::Odp)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("application/epub+zip")),
-            Some(InputKind::Epub)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("message/rfc822")),
-            Some(InputKind::Email)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("image/webp")),
-            Some(InputKind::Image)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("application/x-tex")),
-            Some(InputKind::Latex)
-        );
-        assert_eq!(
-            InputKind::from_filename_and_media_type("upload", Some("text/plain")),
-            Some(InputKind::Text)
-        );
+        for spec in INPUT_KIND_SPECS.iter().filter(|spec| spec.auto_detect) {
+            for media_type in spec.media_types {
+                assert_eq!(
+                    InputKind::from_filename_and_media_type("upload", Some(media_type)),
+                    Some(spec.kind),
+                    "failed to detect media type '{}'",
+                    media_type
+                );
+            }
+        }
     }
 
     #[test]
@@ -562,6 +624,7 @@ mod tests {
             InputKind::JsonDocling
         );
         assert_eq!("latex".parse::<InputKind>().unwrap(), InputKind::Latex);
+        assert_eq!("msg".parse::<InputKind>().unwrap(), InputKind::Email);
         assert!("xml".parse::<InputKind>().is_err());
     }
 
