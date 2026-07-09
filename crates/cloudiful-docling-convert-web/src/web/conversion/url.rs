@@ -74,7 +74,11 @@ pub async fn process_url_conversion(
         })?;
 
     if std::path::Path::new(&file_name).extension().is_none() {
-        file_name = format!("{}.{}", file_name, input_kind.default_extension());
+        file_name = format!(
+            "{}.{}",
+            file_name,
+            input_kind.default_extension_for_media_type(Some(&content_type))
+        );
     }
 
     update_processing_status(
@@ -93,7 +97,11 @@ pub async fn process_url_conversion(
     process_file_conversion(
         state,
         task_id,
-        InputDocument::new(file_name, input_kind.media_type(), file_data),
+        InputDocument::new(
+            file_name.clone(),
+            input_kind.canonical_media_type(&file_name, Some(&content_type)),
+            file_data,
+        ),
         config,
     )
     .await

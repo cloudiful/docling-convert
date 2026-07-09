@@ -15,7 +15,37 @@
 		onFileSelected: (file: File) => void | Promise<void>;
 	} = $props();
 
-	const supportedExtensions = ['.pdf', '.docx', '.md', '.markdown', '.txt'];
+	const supportedExtensions = [
+		'.pdf',
+		'.docx',
+		'.pptx',
+		'.html',
+		'.htm',
+		'.xhtml',
+		'.adoc',
+		'.asciidoc',
+		'.asc',
+		'.md',
+		'.markdown',
+		'.csv',
+		'.xlsx',
+		'.odt',
+		'.ods',
+		'.odp',
+		'.epub',
+		'.eml',
+		'.msg',
+		'.png',
+		'.jpg',
+		'.jpeg',
+		'.gif',
+		'.bmp',
+		'.tif',
+		'.tiff',
+		'.webp',
+		'.svg',
+		'.txt'
+	];
 	const acceptedFormats = supportedExtensions.join(',');
 
 	function supportsFile(file: File): boolean {

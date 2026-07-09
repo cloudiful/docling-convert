@@ -32,9 +32,10 @@ fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
 #[command(
     name = "cloudiful-docling-convert",
     version,
-    about = "Convert pdf/docx/md/txt files through the cloudiful-docling-convert library and Docling API",
-    long_about = "A CLI tool built on the cloudiful-docling-convert library. It converts PDF, DOCX, Markdown, \
-                  and TXT inputs into structured Markdown, text, or JSON output. PDF inputs keep \
+    about = "Convert document files through the cloudiful-docling-convert library and Docling API",
+    long_about = "A CLI tool built on the cloudiful-docling-convert library. It converts PDF, Office, HTML, \
+                  AsciiDoc, spreadsheet, image, EPUB, email, Markdown, and TXT inputs into structured Markdown, \
+                  text, JSON, HTML, or DocTags output. PDF inputs keep \
                   split/bookmark-aware processing and parallel submission through Docling."
 )]
 pub struct Args {
@@ -79,7 +80,7 @@ pub struct Args {
         value_parser = parse_output_format,
         default_value = "md",
         value_name = "FORMAT",
-        help = "Output format: json, md, or text (default: md)"
+        help = "Output format: json, md, text, html, or doctags (default: md)"
     )]
     pub format: OutputFormat,
 
@@ -181,12 +182,12 @@ mod tests {
         let args = Args::try_parse_from([
             "cloudiful-docling-convert",
             "--format",
-            "json",
+            "html",
             "--split-input=false",
         ])
         .expect("CLI arguments should parse");
 
-        assert_eq!(args.format, OutputFormat::Json);
+        assert_eq!(args.format, OutputFormat::Html);
         assert!(!args.split_input);
     }
 

@@ -65,6 +65,20 @@ impl DocumentConverter {
                 .ok_or_else(|| {
                     PdfConvertError::operation_error("writing text", "text output is empty")
                 }),
+            OutputFormat::Html => document
+                .html
+                .as_ref()
+                .map(|value| value.as_bytes().to_vec())
+                .ok_or_else(|| {
+                    PdfConvertError::operation_error("writing html", "html output is empty")
+                }),
+            OutputFormat::Doctags => document
+                .doctags
+                .as_ref()
+                .map(|value| value.as_bytes().to_vec())
+                .ok_or_else(|| {
+                    PdfConvertError::operation_error("writing doctags", "doctags output is empty")
+                }),
             OutputFormat::Json => document
                 .json
                 .as_ref()
@@ -89,6 +103,8 @@ impl DocumentConverter {
                 .get("document")
                 .and_then(|document| document.get("json_content"))
                 .cloned(),
+            html: extract_document_field(&raw_result, "html_content"),
+            doctags: extract_document_field(&raw_result, "doctags_content"),
             raw_result,
         }
     }
@@ -102,6 +118,8 @@ impl DocumentConverter {
     ) -> ConvertedDocument {
         let markdown = join_optional_chunks(chunks.iter().map(|chunk| chunk.markdown.as_deref()));
         let text = join_optional_chunks(chunks.iter().map(|chunk| chunk.text.as_deref()));
+        let html = join_optional_chunks(chunks.iter().map(|chunk| chunk.html.as_deref()));
+        let doctags = join_optional_chunks(chunks.iter().map(|chunk| chunk.doctags.as_deref()));
         let json_values: Vec<Value> = chunks
             .iter()
             .filter_map(|chunk| chunk.json.clone())
@@ -117,6 +135,8 @@ impl DocumentConverter {
             markdown,
             text,
             json,
+            html,
+            doctags,
             chunks,
             metadata: ConvertedDocumentMetadata {
                 input_kind,

@@ -1,21 +1,21 @@
 {
   "app": {
-    "title": "PDF Convert",
-    "description": "Convert PDF files to Markdown or JSON format"
+    "title": "Document Convert",
+    "description": "Convert documents into Markdown, JSON, text, HTML, or DocTags"
   },
   "header": {
     "settings": "Settings"
   },
   "upload": {
     "title": "Upload Document",
-    "dragDrop": "Drag and drop a PDF, DOCX, Markdown, or text file here, or click to browse",
+    "dragDrop": "Drag and drop a supported document here, or click to browse",
     "browse": "Browse Files",
     "uploading": "Uploading...",
-    "formats": "Supports PDF, DOCX, Markdown, and text files"
+    "formats": "Supports PDF, DOCX, PPTX, HTML, AsciiDoc, CSV, XLSX, ODT/ODS/ODP, EPUB, email, image, Markdown, and text files"
   },
   "url": {
     "title": "Convert from URL",
-    "placeholder": "Enter PDF URL...",
+    "placeholder": "Enter a document URL...",
     "submit": "Convert",
     "converting": "Converting..."
   },
@@ -25,6 +25,9 @@
     "format": "Output Format",
     "formatMd": "Markdown",
     "formatJson": "JSON",
+    "formatText": "Text",
+    "formatHtml": "HTML",
+    "formatDoctags": "DocTags",
     "pagesPerFile": "Pages per file",
     "batchSize": "Batch size",
     "splitInput": "Split input PDF",
@@ -35,7 +38,7 @@
   "tasks": {
     "title": "Conversion Tasks",
     "empty": "No conversion tasks yet",
-    "emptyHint": "Upload a PDF or enter a URL to start converting",
+    "emptyHint": "Upload a document or enter a URL to start converting",
     "status": {
       "pending": "Pending",
       "processing": "Processing",

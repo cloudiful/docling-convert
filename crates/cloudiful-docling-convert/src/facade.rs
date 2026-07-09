@@ -99,8 +99,12 @@ impl PdfConvert {
                 )
             })?;
 
-        self.convert_input(InputDocument::new(filename, input_kind.media_type(), bytes))
-            .await
+        self.convert_input(InputDocument::new(
+            filename.clone(),
+            input_kind.canonical_media_type(&filename, None),
+            bytes,
+        ))
+        .await
     }
 }
 
@@ -147,7 +151,7 @@ mod tests {
 
         let error = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(converter.convert_bytes("notes.csv", Bytes::from_static(b"test")))
+            .block_on(converter.convert_bytes("notes.bin", Bytes::from_static(b"test")))
             .unwrap_err();
 
         assert!(error.to_string().contains("unsupported input type"));

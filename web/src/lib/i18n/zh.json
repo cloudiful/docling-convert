@@ -1,21 +1,21 @@
 {
   "app": {
-    "title": "PDF 转换器",
-    "description": "将 PDF 文件转换为 Markdown 或 JSON 格式"
+    "title": "文档转换器",
+    "description": "将文档转换为 Markdown、JSON、文本、HTML 或 DocTags 格式"
   },
   "header": {
     "settings": "设置"
   },
   "upload": {
     "title": "上传文档",
-    "dragDrop": "拖拽 PDF、DOCX、Markdown 或文本文件到此处，或点击浏览",
+    "dragDrop": "拖拽受支持的文档到此处，或点击浏览",
     "browse": "浏览文件",
     "uploading": "上传中...",
-    "formats": "支持 PDF、DOCX、Markdown 和文本文件"
+    "formats": "支持 PDF、DOCX、PPTX、HTML、AsciiDoc、CSV、XLSX、ODT/ODS/ODP、EPUB、邮件、图片、Markdown 和文本文件"
   },
   "url": {
     "title": "从 URL 转换",
-    "placeholder": "输入 PDF 链接...",
+    "placeholder": "输入文档链接...",
     "submit": "转换",
     "converting": "转换中..."
   },
@@ -25,6 +25,9 @@
     "format": "输出格式",
     "formatMd": "Markdown",
     "formatJson": "JSON",
+    "formatText": "文本",
+    "formatHtml": "HTML",
+    "formatDoctags": "DocTags",
     "pagesPerFile": "每文件页数",
     "batchSize": "批处理大小",
     "splitInput": "拆分输入 PDF",
@@ -35,7 +38,7 @@
   "tasks": {
     "title": "转换任务",
     "empty": "暂无转换任务",
-    "emptyHint": "上传 PDF 或输入链接开始转换",
+    "emptyHint": "上传文档或输入链接开始转换",
     "status": {
       "pending": "等待中",
       "processing": "处理中",

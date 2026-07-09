@@ -64,7 +64,11 @@ pub async fn upload_file(
     let data = upload.data;
     let config = upload.config;
     let input_kind = resolve_input_kind(&file_name, &media_type)?;
-    let input = InputDocument::new(file_name.clone(), input_kind.media_type(), data);
+    let input = InputDocument::new(
+        file_name.clone(),
+        input_kind.canonical_media_type(&file_name, Some(&media_type)),
+        data,
+    );
     let total_chunks = estimated_total_chunks_for_input(&input, &config);
 
     let task_id = state
@@ -199,9 +203,7 @@ async fn parse_upload_request(multipart: &mut Multipart) -> Result<UploadRequest
         };
 
         if field_name == "file" {
-            file_name = Some(sanitize_filename(
-                field.file_name().unwrap_or("unknown.pdf"),
-            ));
+            file_name = Some(sanitize_filename(field.file_name().unwrap_or("upload")));
             media_type = Some(
                 field
                     .content_type()

@@ -78,7 +78,19 @@ pub fn build_convert_options(
             chunking: behavior.chunking,
             batch_size: behavior.batch_size,
         })),
-        InputKind::Docx | InputKind::Markdown => {
+        InputKind::Docx
+        | InputKind::Pptx
+        | InputKind::Html
+        | InputKind::Asciidoc
+        | InputKind::Markdown
+        | InputKind::Csv
+        | InputKind::Xlsx
+        | InputKind::Odt
+        | InputKind::Ods
+        | InputKind::Odp
+        | InputKind::Epub
+        | InputKind::Email
+        | InputKind::Image => {
             reject_pdf_only_options(input_kind, behavior)?;
             Ok(ConvertOptions::Generic(GenericFileConvertOptions {
                 chunking: behavior.chunking,

@@ -176,12 +176,30 @@ async fn test_upload_real_pdf_sets_chunk_total() {
 }
 
 #[tokio::test]
-async fn test_upload_unsupported_file_type() {
+async fn test_upload_accepts_csv() {
     let state = create_test_state();
+    let task_state = state.clone();
     let app: Router = create_router(state);
 
     let csv_content = b"name,value\nfoo,bar";
     let request = create_multipart_request("test.csv", "text/csv", csv_content, &[]);
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert_eq!(task.filename, "test.csv");
+}
+
+#[tokio::test]
+async fn test_upload_unsupported_file_type() {
+    let state = create_test_state();
+    let app: Router = create_router(state);
+
+    let exe_content = b"MZ";
+    let request =
+        create_multipart_request("test.exe", "application/octet-stream", exe_content, &[]);
     let response = app.oneshot(request).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
@@ -275,8 +293,8 @@ fn test_sanitize_filename() {
     assert_eq!(sanitize_filename("..pdf"), "pdf");
     assert_eq!(sanitize_filename(".pdf"), "pdf");
     assert_eq!(sanitize_filename("test."), "test");
-    assert_eq!(sanitize_filename(""), "downloaded.pdf");
-    assert_eq!(sanitize_filename("   "), "downloaded.pdf");
+    assert_eq!(sanitize_filename(""), "downloaded");
+    assert_eq!(sanitize_filename("   "), "downloaded");
 }
 
 #[tokio::test]
@@ -348,6 +366,90 @@ async fn test_download_file_streams_completed_output() {
 
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     assert_eq!(&body[..], b"# converted");
+}
+
+#[tokio::test]
+async fn test_download_file_uses_html_content_type() {
+    let dir = tempdir().unwrap();
+    let output_path = dir.path().join("result.html");
+    tokio::fs::write(&output_path, "<p>converted</p>")
+        .await
+        .unwrap();
+
+    let state = create_test_state();
+    let task_id = state
+        .create_task(
+            "result.html".to_string(),
+            TaskConfig {
+                format: "html".to_string(),
+                ..TaskConfig::default()
+            },
+            1,
+        )
+        .await;
+    state.set_task_output_path(&task_id, output_path).await;
+    state
+        .set_task_output(&task_id, format!("/api/download/{}", task_id))
+        .await;
+
+    let app: Router = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/download/{}", task_id))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/html; charset=utf-8"
+    );
+}
+
+#[tokio::test]
+async fn test_download_file_uses_doctags_content_type() {
+    let dir = tempdir().unwrap();
+    let output_path = dir.path().join("result.doctags");
+    tokio::fs::write(&output_path, "converted").await.unwrap();
+
+    let state = create_test_state();
+    let task_id = state
+        .create_task(
+            "result.doctags".to_string(),
+            TaskConfig {
+                format: "doctags".to_string(),
+                ..TaskConfig::default()
+            },
+            1,
+        )
+        .await;
+    state.set_task_output_path(&task_id, output_path).await;
+    state
+        .set_task_output(&task_id, format!("/api/download/{}", task_id))
+        .await;
+
+    let app: Router = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/download/{}", task_id))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/plain; charset=utf-8"
+    );
 }
 
 #[tokio::test]
@@ -457,21 +559,26 @@ async fn test_process_url_conversion_updates_non_pdf_chunks() {
     .await;
 
     let state = create_test_state();
+    let config = TaskConfig {
+        format: "text".to_string(),
+        ..TaskConfig::default()
+    };
     let task_id = state
-        .create_task("notes.txt".to_string(), TaskConfig::default(), 0)
+        .create_task("notes.txt".to_string(), config.clone(), 0)
         .await;
     process_url_conversion(
         state.clone(),
         task_id.clone(),
         url,
-        "notes.txt".to_string(),
-        TaskConfig::default(),
+        "notes".to_string(),
+        config,
     )
     .await
     .unwrap();
 
     let task = state.get_task(&task_id).await.unwrap();
     assert_eq!(task.status, TaskStatus::Completed);
+    assert_eq!(task.filename, "notes.txt");
     assert_eq!(task.total_chunks, 1);
     assert_eq!(task.completed_chunks, 1);
     assert!(task.output_url.is_some());

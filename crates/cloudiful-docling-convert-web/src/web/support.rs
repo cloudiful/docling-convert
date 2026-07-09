@@ -34,7 +34,7 @@ pub fn sanitize_filename(name: &str) -> String {
     result = result.trim().trim_matches('.').to_string();
 
     if result.is_empty() {
-        return "downloaded.pdf".to_string();
+        return "downloaded".to_string();
     }
 
     result
@@ -64,6 +64,8 @@ pub fn output_content_type(format: &str) -> &'static str {
     match format {
         "json" => "application/json",
         "text" => "text/plain; charset=utf-8",
+        "html" => "text/html; charset=utf-8",
+        "doctags" => "text/plain; charset=utf-8",
         _ => "text/markdown; charset=utf-8",
     }
 }

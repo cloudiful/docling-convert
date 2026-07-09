@@ -54,6 +54,9 @@
 				>
 					<option value="md">{$t.settings.formatMd}</option>
 					<option value="json">{$t.settings.formatJson}</option>
+					<option value="text">{$t.settings.formatText}</option>
+					<option value="html">{$t.settings.formatHtml}</option>
+					<option value="doctags">{$t.settings.formatDoctags}</option>
 				</select>
 			</div>
 

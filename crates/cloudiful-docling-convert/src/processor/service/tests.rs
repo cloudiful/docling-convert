@@ -30,7 +30,13 @@ async fn txt_input_uses_local_conversion() {
     let converter = test_converter();
     let request = ConvertRequest {
         input: InputDocument::new("notes.txt", "text/plain", Bytes::from("a\r\nb")),
-        output_formats: vec![OutputFormat::Md, OutputFormat::Text, OutputFormat::Json],
+        output_formats: vec![
+            OutputFormat::Md,
+            OutputFormat::Text,
+            OutputFormat::Json,
+            OutputFormat::Html,
+            OutputFormat::Doctags,
+        ],
         options: ConvertOptions::Text(TextConvertOptions::default()),
     };
 
@@ -38,6 +44,13 @@ async fn txt_input_uses_local_conversion() {
     assert_eq!(document.metadata.input_kind, InputKind::Text);
     assert_eq!(document.text.as_deref(), Some("a\nb"));
     assert_eq!(document.markdown.as_deref(), Some("a\nb"));
+    assert!(
+        document
+            .html
+            .as_deref()
+            .is_some_and(|html| html.contains("<pre>a\nb</pre>"))
+    );
+    assert_eq!(document.doctags.as_deref(), Some("a\nb"));
     assert!(document.json.is_some());
 }
 
@@ -74,6 +87,48 @@ async fn convert_to_file_with_progress_reports_text_completion() {
     assert_eq!(result.output_paths.len(), 1);
 }
 
+#[tokio::test]
+async fn convert_to_file_writes_html_and_doctags_for_text_input() {
+    let converter = test_converter();
+    let temp_dir = tempfile::tempdir().unwrap();
+
+    let html_result = converter
+        .convert_to_file(FileConvertRequest {
+            request: ConvertRequest {
+                input: InputDocument::new("notes.txt", "text/plain", Bytes::from("hello")),
+                output_formats: vec![OutputFormat::Html],
+                options: ConvertOptions::Text(TextConvertOptions::default()),
+            },
+            output_dir: temp_dir.path().to_path_buf(),
+            selected_output: OutputFormat::Html,
+            overwrite: true,
+        })
+        .await
+        .unwrap();
+    let html = tokio::fs::read_to_string(&html_result.output_paths[0])
+        .await
+        .unwrap();
+    assert!(html.contains("<pre>hello</pre>"));
+
+    let doctags_result = converter
+        .convert_to_file(FileConvertRequest {
+            request: ConvertRequest {
+                input: InputDocument::new("notes.txt", "text/plain", Bytes::from("hello")),
+                output_formats: vec![OutputFormat::Doctags],
+                options: ConvertOptions::Text(TextConvertOptions::default()),
+            },
+            output_dir: temp_dir.path().to_path_buf(),
+            selected_output: OutputFormat::Doctags,
+            overwrite: true,
+        })
+        .await
+        .unwrap();
+    let doctags = tokio::fs::read_to_string(&doctags_result.output_paths[0])
+        .await
+        .unwrap();
+    assert_eq!(doctags, "hello");
+}
+
 #[test]
 fn file_output_path_uses_selected_format() {
     let path = DocumentConverter::calculate_output_path(
@@ -82,4 +137,14 @@ fn file_output_path_uses_selected_format() {
         OutputFormat::Text,
     );
     assert_eq!(path, PathBuf::from("/tmp/out/sample.text"));
+}
+
+#[test]
+fn file_output_path_uses_doctags_extension() {
+    let path = DocumentConverter::calculate_output_path(
+        Path::new("/tmp/out"),
+        "sample.docx",
+        OutputFormat::Doctags,
+    );
+    assert_eq!(path, PathBuf::from("/tmp/out/sample.doctags"));
 }

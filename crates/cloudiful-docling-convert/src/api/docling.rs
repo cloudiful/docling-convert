@@ -215,7 +215,7 @@ impl DoclingClient {
 
         if matches!(
             input_kind,
-            InputKind::Pdf | InputKind::Docx | InputKind::Markdown
+            InputKind::Pdf | InputKind::Docx | InputKind::Markdown | InputKind::Image
         ) {
             if let Some(vlm_config) = self.config.resolved_vlm_config()? {
                 form = self.apply_vlm_config(form, &vlm_config)?;
@@ -351,6 +351,22 @@ mod tests {
         let debug = format!("{form:?}");
         assert!(!debug.contains("page_range"));
         assert!(debug.contains("from_formats"));
+    }
+
+    #[test]
+    fn build_form_uses_generic_first_wave_formats() {
+        let client =
+            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
+
+        let input = InputDocument::new("sheet.csv", "text/csv", Bytes::from_static(b"a,b"));
+        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Html]);
+
+        let form = client.build_form(&input, &request).unwrap();
+        let debug = format!("{form:?}");
+        assert!(debug.contains("text/csv"));
+        assert!(debug.contains("sheet.csv"));
+        assert!(debug.contains("csv"));
+        assert!(debug.contains("to_formats"));
     }
 
     #[test]
