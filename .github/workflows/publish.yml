@@ -1,4 +1,4 @@
-name: Publish Readiness
+name: Publish
 
 on:
   push:
@@ -8,14 +8,18 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  verify-release:
+  publish:
     runs-on: ubuntu-latest
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/cloudiful-docling-convert
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -26,5 +30,9 @@ jobs:
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Verify core crate package contents
-        run: cargo package -p cloudiful-docling-convert --allow-dirty
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish crate
+        run: cargo publish --registry crates-io --token "${{ steps.auth.outputs.token }}"
