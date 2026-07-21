@@ -34,5 +34,11 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Package core crate
+        run: cargo package -p cloudiful-docling-convert --allow-dirty
+
       - name: Publish crate
-        run: cargo publish --registry crates-io --token "${{ steps.auth.outputs.token }}"
+        run: cargo publish -p cloudiful-docling-convert --registry crates-io --token "${{ steps.auth.outputs.token }}"

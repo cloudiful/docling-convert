@@ -34,12 +34,28 @@ pub async fn handle_response(response: Response, context: &str) -> Result<Respon
     let status = response.status();
     if !status.is_success() {
         let status_code = status.as_u16();
-        let message = format!(
+        let status_message = format!(
             "{} failed: {} {}",
             context,
             status,
             status.canonical_reason().unwrap_or("Unknown")
         );
+        let response_text = response.text().await.map_err(|error| {
+            PdfConvertError::api_error(
+                Some(status_code),
+                format!("{status_message}; failed to read response body: {error}"),
+            )
+        })?;
+        let message = if response_text.trim().is_empty() {
+            status_message
+        } else {
+            let details = extract_error_details(&response_text);
+            if details == response_text {
+                format!("{status_message}; response body: {response_text}")
+            } else {
+                format!("{status_message}; {details}; response body: {response_text}")
+            }
+        };
         return Err(PdfConvertError::api_error(Some(status_code), message));
     }
     Ok(response)
@@ -147,14 +163,14 @@ pub fn extract_error_details(response_text: &str) -> String {
         Ok(json) => {
             let mut details = Vec::new();
 
-            if let Some(error) = json.get("error").and_then(|v| v.as_str()) {
-                details.push(format!("error: {}", error));
+            if let Some(error) = json.get("error") {
+                details.push(format!("error: {}", format_json_value(error)));
             }
-            if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
-                details.push(format!("message: {}", message));
+            if let Some(message) = json.get("message") {
+                details.push(format!("message: {}", format_json_value(message)));
             }
-            if let Some(detail) = json.get("detail").and_then(|v| v.as_str()) {
-                details.push(format!("detail: {}", detail));
+            if let Some(detail) = json.get("detail") {
+                details.push(format!("detail: {}", format_json_value(detail)));
             }
 
             if details.is_empty() {
@@ -163,14 +179,15 @@ pub fn extract_error_details(response_text: &str) -> String {
                 details.join(", ")
             }
         }
-        Err(_) => {
-            if response_text.len() > 200 {
-                format!("{}...", &response_text[..200])
-            } else {
-                response_text.to_string()
-            }
-        }
+        Err(_) => response_text.to_string(),
     }
+}
+
+fn format_json_value(value: &Value) -> String {
+    value
+        .as_str()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| value.to_string())
 }
 
 #[cfg(test)]
@@ -204,10 +221,7 @@ mod tests {
         let broken_pipe = PdfConvertError::api_error(None, "Broken pipe (os error 32)");
         assert!(is_retriable_error_type(&broken_pipe));
 
-        let io_err = PdfConvertError::io_error(
-            "test",
-            std::io::Error::new(std::io::ErrorKind::Other, "io error"),
-        );
+        let io_err = PdfConvertError::io_error("test", std::io::Error::other("io error"));
         assert!(is_retriable_error_type(&io_err));
 
         let val_err = PdfConvertError::validation_error("param", "reason");
@@ -229,5 +243,13 @@ mod tests {
         let non_json = "Internal Server Error";
         let details = extract_error_details(non_json);
         assert_eq!(details, non_json);
+
+        let structured_json = r#"{"detail":[{"loc":["body","files"],"msg":"field required"}]}"#;
+        let details = extract_error_details(structured_json);
+        assert!(details.contains("detail: [{"));
+        assert!(details.contains("field required"));
+
+        let long_text = "x".repeat(256);
+        assert_eq!(extract_error_details(&long_text), long_text);
     }
 }

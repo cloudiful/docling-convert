@@ -198,7 +198,8 @@ impl DoclingClient {
 
         let mut form = multipart::Form::new()
             .part("files", part)
-            .text("from_formats", input_kind.from_formats_value().to_string());
+            .text("from_formats", input_kind.from_formats_value().to_string())
+            .text("target_type", "inbody");
 
         for format in &request.output_formats {
             form = form.text("to_formats", format.as_api_value().to_string());
@@ -213,10 +214,10 @@ impl DoclingClient {
             form = form.text("include_chunking", "true");
         }
 
-        if input_kind.supports_vlm() {
-            if let Some(vlm_config) = self.config.resolved_vlm_config()? {
-                form = self.apply_vlm_config(form, &vlm_config)?;
-            }
+        if input_kind.supports_vlm()
+            && let Some(vlm_config) = self.config.resolved_vlm_config()?
+        {
+            form = self.apply_vlm_config(form, &vlm_config)?;
         }
 
         Ok(form)
@@ -296,112 +297,5 @@ impl DoclingClient {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::document::InputKind;
-
-    #[test]
-    fn build_form_uses_input_media_type_and_format() {
-        let client = DoclingClient::new(DoclingConfig {
-            base_url: "http://localhost:5001/v1".to_string(),
-            openai_base_url: "http://localhost:1234/v1".to_string(),
-            vlm_pipeline_model: "vlm".to_string(),
-            picture_description_model: "pic".to_string(),
-            code_formula_model: "code".to_string(),
-            api_key: Some("secret".to_string()),
-        })
-        .unwrap();
-
-        let input = InputDocument::new("notes.md", "text/markdown", Bytes::from_static(b"# hello"));
-        let request = DoclingConvertRequest {
-            output_formats: vec![OutputFormat::Md, OutputFormat::Text],
-            page_range: None,
-            chunking: false,
-        };
-
-        let form = client.build_form(&input, &request).unwrap();
-        let debug = format!("{form:?}");
-        assert!(debug.contains("text/markdown"));
-        assert!(debug.contains("notes.md"));
-        assert!(debug.contains("to_formats"));
-    }
-
-    #[test]
-    fn build_form_skips_page_range_for_generic_requests() {
-        let client = DoclingClient::new(DoclingConfig {
-            base_url: "http://localhost:5001/v1".to_string(),
-            openai_base_url: "http://localhost:1234/v1".to_string(),
-            vlm_pipeline_model: "vlm".to_string(),
-            picture_description_model: "pic".to_string(),
-            code_formula_model: "code".to_string(),
-            api_key: Some("secret".to_string()),
-        })
-        .unwrap();
-
-        let input = InputDocument::new(
-            "doc.docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            Bytes::from_static(b"PK"),
-        );
-        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
-
-        let form = client.build_form(&input, &request).unwrap();
-        let debug = format!("{form:?}");
-        assert!(!debug.contains("page_range"));
-        assert!(debug.contains("from_formats"));
-    }
-
-    #[test]
-    fn build_form_uses_generic_first_wave_formats() {
-        let client =
-            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
-
-        let input = InputDocument::new("sheet.csv", "text/csv", Bytes::from_static(b"a,b"));
-        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Html]);
-
-        let form = client.build_form(&input, &request).unwrap();
-        let debug = format!("{form:?}");
-        assert!(debug.contains("text/csv"));
-        assert!(debug.contains("sheet.csv"));
-        assert!(debug.contains("csv"));
-        assert!(debug.contains("to_formats"));
-    }
-
-    #[test]
-    fn build_form_supports_override_only_second_wave_formats() {
-        let client =
-            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
-
-        let input = InputDocument::new(
-            "filing.xml",
-            "application/xml",
-            Bytes::from_static(b"<article />"),
-        )
-        .with_input_kind(InputKind::XmlJats);
-        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
-
-        let form = client.build_form(&input, &request).unwrap();
-        let debug = format!("{form:?}");
-        assert_eq!(input.kind().unwrap(), InputKind::XmlJats);
-        assert!(debug.contains("application/xml"));
-        assert!(debug.contains("from_formats"));
-    }
-
-    #[test]
-    fn build_form_skips_vlm_fields_when_runtime_config_is_missing() {
-        let client =
-            DoclingClient::new(DoclingConfig::without_vlm("http://localhost:5001/v1")).unwrap();
-
-        let input = InputDocument::new("notes.md", "text/markdown", Bytes::from_static(b"# hello"));
-        let request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
-
-        let form = client.build_form(&input, &request).unwrap();
-        let debug = format!("{form:?}");
-        assert!(!debug.contains("vlm_pipeline_custom_config"));
-        assert!(!debug.contains("picture_description_custom_config"));
-        assert!(!debug.contains("code_formula_custom_config"));
-        assert!(!debug.contains("do_code_enrichment"));
-        assert!(!debug.contains("do_formula_enrichment"));
-        assert!(!debug.contains("do_picture_description"));
-    }
-}
+#[path = "docling_tests.rs"]
+mod tests;
