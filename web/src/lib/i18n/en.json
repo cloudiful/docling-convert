@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Document Convert",
-    "description": "Convert documents into Markdown, JSON, text, HTML, or DocTags"
+    "description": "Convert documents with Docling Serve"
   },
   "header": {
     "settings": "Settings"
@@ -11,7 +11,7 @@
     "dragDrop": "Drag and drop a supported document here, or click to browse",
     "browse": "Browse Files",
     "uploading": "Uploading...",
-    "formats": "Supports PDF, DOCX, PPTX, HTML, AsciiDoc, CSV, XLSX, ODT/ODS/ODP, EPUB, email, image, Markdown, text, XML, JSON, and LaTeX files"
+    "formats": "Supports documents, spreadsheets, presentations, images, audio, video, subtitles, and Docling packages"
   },
   "url": {
     "title": "Convert from URL",
@@ -25,9 +25,15 @@
     "format": "Output Format",
     "formatMd": "Markdown",
     "formatJson": "JSON",
+    "formatYaml": "YAML",
     "formatText": "Text",
     "formatHtml": "HTML",
+    "formatHtmlSplitPage": "HTML by page",
     "formatDoctags": "DocTags",
+    "formatVtt": "WebVTT",
+    "formatDoclang": "Docling Document",
+    "formatDclx": "DCLX",
+    "formatChunks": "Chunks JSON",
     "inputFormat": "Input Format",
     "inputFormatAuto": "Auto",
     "inputFormatXmlUspto": "XML USPTO",
@@ -37,12 +43,23 @@
     "inputFormatMetsGbs": "METS GBS",
     "inputFormatJsonDocling": "JSON Docling",
     "inputFormatLatex": "LaTeX",
-    "pagesPerFile": "Pages per file",
-    "batchSize": "Batch size",
-    "splitInput": "Split input PDF",
-    "splitOutput": "Split output files",
-    "splitByBookmark": "Split by bookmarks",
-    "chunking": "Enable chunking"
+    "chunker": "Chunker",
+    "chunkerNone": "None",
+    "chunkerHybrid": "Hybrid",
+    "chunkerHierarchical": "Hierarchical",
+    "pipeline": "Pipeline",
+    "pipelineDefault": "Docling default",
+    "pipelineLegacy": "Legacy",
+    "pipelineStandard": "Standard",
+    "pipelineVlm": "VLM",
+    "pipelineAsr": "ASR",
+    "useMarkdownTables": "Use Markdown tables",
+    "useMarkdownImages": "Use Markdown images",
+    "imagePlaceholder": "Image placeholder",
+    "includeRawText": "Include raw text",
+    "maxTokens": "Maximum tokens",
+    "tokenizer": "Tokenizer",
+    "mergePeers": "Merge peer chunks"
   },
   "tasks": {
     "title": "Conversion Tasks",
@@ -52,6 +69,8 @@
       "pending": "Pending",
       "processing": "Processing",
       "completed": "Completed",
+      "partial": "Partial",
+      "skipped": "Skipped",
       "failed": "Failed"
     },
     "progress": "Progress",

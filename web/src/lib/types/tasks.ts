@@ -1,13 +1,23 @@
-export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'processing' | 'completed' | 'partial' | 'failed' | 'skipped';
+export type ChunkerKind = 'none' | 'hybrid' | 'hierarchical';
+export type PipelineKind = 'legacy' | 'standard' | 'vlm' | 'asr';
+
+export interface ChunkingOptions {
+	use_markdown_tables: boolean;
+	use_markdown_images: boolean;
+	image_placeholder: string;
+	include_raw_text: boolean;
+	max_tokens: number | null;
+	tokenizer: string | null;
+	merge_peers: boolean;
+}
 
 export interface TaskConfig {
 	format: string;
 	input_format?: string | null;
-	pages_per_file: number;
-	split_input: boolean;
-	split_by_bookmark: boolean;
-	chunking: boolean;
-	batch_size: number;
+	chunker: ChunkerKind;
+	chunking_options: ChunkingOptions;
+	pipeline?: PipelineKind | null;
 }
 
 export interface Task {
@@ -28,9 +38,15 @@ export interface Task {
 export const defaultTaskConfig: TaskConfig = {
 	format: 'md',
 	input_format: null,
-	pages_per_file: 5,
-	split_input: true,
-	split_by_bookmark: false,
-	chunking: false,
-	batch_size: 2
+	chunker: 'none',
+	chunking_options: {
+		use_markdown_tables: false,
+		use_markdown_images: false,
+		image_placeholder: '![IMAGE]',
+		include_raw_text: false,
+		max_tokens: null,
+		tokenizer: 'sentence-transformers/all-MiniLM-L6-v2',
+		merge_peers: true
+	},
+	pipeline: null
 };

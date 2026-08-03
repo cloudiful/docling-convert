@@ -35,7 +35,10 @@ impl DocumentConverter {
             .iter()
             .any(|format| matches!(format, OutputFormat::Doctags))
             .then(|| content.clone());
-
+        let doclang = output_formats
+            .iter()
+            .any(|format| matches!(format, OutputFormat::Doclang | OutputFormat::Vtt))
+            .then(|| content.clone());
         let markdown = output_formats
             .iter()
             .any(|format| matches!(format, OutputFormat::Md))
@@ -54,44 +57,25 @@ impl DocumentConverter {
                         "text_content": content.clone(),
                         "html_content": html.clone(),
                         "doctags_content": doctags.clone(),
+                        "doclang_content": doclang.clone(),
                     }
                 })
             });
-
-        let raw_result = json!({
-            "document": {
-                "md_content": markdown.clone(),
-                "text_content": text.clone(),
-                "json_content": json.clone(),
-                "html_content": html.clone(),
-                "doctags_content": doctags.clone(),
-            }
-        });
 
         Ok(ConvertedDocument {
             filename: input.filename.clone(),
             markdown,
             text,
             json,
-            html: html.clone(),
-            doctags: doctags.clone(),
-            chunks: vec![crate::document::ConvertedChunk {
-                metadata: None,
-                markdown: Some(content.clone()),
-                text: Some(content),
-                json: raw_result
-                    .get("document")
-                    .and_then(|document| document.get("json_content"))
-                    .cloned(),
-                html,
-                doctags,
-                raw_result,
-            }],
+            html,
+            doctags,
+            doclang,
+            chunks: Vec::new(),
+            chunk_response: None,
+            archive: None,
             metadata: ConvertedDocumentMetadata {
                 input_kind: InputKind::Text,
                 media_type: input.media_type.clone(),
-                page_count: None,
-                outlines: Vec::new(),
             },
             errors: Vec::new(),
         })

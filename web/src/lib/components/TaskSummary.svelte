@@ -20,6 +20,10 @@
 					<div class="text-xs text-gray-500 dark:text-gray-400">{$t.tasks.status.completed}</div>
 				</div>
 				<div class="text-center">
+					<div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.partialTasks}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">{$t.tasks.status.partial}</div>
+				</div>
+				<div class="text-center">
 					<div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.processingTasks}</div>
 					<div class="text-xs text-gray-500 dark:text-gray-400">{$t.tasks.status.processing}</div>
 				</div>

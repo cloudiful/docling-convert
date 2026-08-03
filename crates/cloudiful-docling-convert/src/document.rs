@@ -3,22 +3,28 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::error::{PdfConvertError, Result};
-use crate::models::{Bookmark, ChunkMetadata};
+use crate::models::{ChunkDocumentResponse, DoclingChunk};
 
 mod input_kind;
 
 pub use input_kind::InputKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OutputFormat {
     Json,
     Md,
-    Text,
+    Yaml,
     Html,
+    HtmlSplitPage,
+    Text,
     Doctags,
+    Vtt,
+    Doclang,
+    Dclx,
+    Chunks,
 }
 
 impl OutputFormat {
@@ -26,14 +32,35 @@ impl OutputFormat {
         match self {
             Self::Json => "json",
             Self::Md => "md",
-            Self::Text => "text",
+            Self::Yaml => "yaml",
             Self::Html => "html",
+            Self::HtmlSplitPage => "html_split_page",
+            Self::Text => "text",
             Self::Doctags => "doctags",
+            Self::Vtt => "vtt",
+            Self::Doclang => "doclang",
+            Self::Dclx => "dclx",
+            Self::Chunks => "chunks",
         }
     }
 
     pub fn extension(self) -> &'static str {
-        self.as_api_value()
+        match self {
+            Self::Chunks => "chunks.json",
+            Self::Yaml | Self::HtmlSplitPage | Self::Vtt | Self::Dclx => "zip",
+            _ => self.as_api_value(),
+        }
+    }
+
+    pub fn is_archive(self) -> bool {
+        matches!(
+            self,
+            Self::Yaml | Self::HtmlSplitPage | Self::Vtt | Self::Dclx
+        )
+    }
+
+    pub fn is_chunk_output(self) -> bool {
+        matches!(self, Self::Chunks)
     }
 }
 
@@ -47,15 +74,119 @@ impl FromStr for OutputFormat {
     type Err = PdfConvertError;
 
     fn from_str(value: &str) -> Result<Self> {
-        match value {
+        match value.trim().to_ascii_lowercase().as_str() {
             "json" => Ok(Self::Json),
-            "md" => Ok(Self::Md),
-            "text" => Ok(Self::Text),
+            "md" | "markdown" => Ok(Self::Md),
+            "yaml" | "yml" => Ok(Self::Yaml),
             "html" => Ok(Self::Html),
+            "html_split_page" | "html-split-page" => Ok(Self::HtmlSplitPage),
+            "text" | "txt" => Ok(Self::Text),
             "doctags" => Ok(Self::Doctags),
+            "vtt" => Ok(Self::Vtt),
+            "doclang" => Ok(Self::Doclang),
+            "dclx" => Ok(Self::Dclx),
+            "chunks" => Ok(Self::Chunks),
             other => Err(PdfConvertError::validation_error(
                 "format",
-                format!("unsupported output format: {}", other),
+                format!("unsupported output format: {other}"),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkerKind {
+    #[default]
+    None,
+    Hybrid,
+    Hierarchical,
+}
+
+impl ChunkerKind {
+    pub fn is_enabled(self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
+impl std::fmt::Display for ChunkerKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::None => "none",
+            Self::Hybrid => "hybrid",
+            Self::Hierarchical => "hierarchical",
+        };
+        f.write_str(value)
+    }
+}
+
+impl FromStr for ChunkerKind {
+    type Err = PdfConvertError;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "none" | "" => Ok(Self::None),
+            "hybrid" => Ok(Self::Hybrid),
+            "hierarchical" => Ok(Self::Hierarchical),
+            other => Err(PdfConvertError::validation_error(
+                "chunker",
+                format!("unsupported chunker: {other}"),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ChunkingOptions {
+    pub use_markdown_tables: bool,
+    pub use_markdown_images: bool,
+    pub image_placeholder: String,
+    pub include_raw_text: bool,
+    pub max_tokens: Option<u32>,
+    pub tokenizer: Option<String>,
+    pub merge_peers: bool,
+}
+
+impl ChunkingOptions {
+    pub fn hybrid_defaults() -> Self {
+        Self {
+            image_placeholder: "![IMAGE]".to_string(),
+            tokenizer: Some("sentence-transformers/all-MiniLM-L6-v2".to_string()),
+            merge_peers: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn hierarchical_defaults() -> Self {
+        Self {
+            image_placeholder: "![IMAGE]".to_string(),
+            merge_peers: true,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PipelineKind {
+    Legacy,
+    Standard,
+    Vlm,
+    Asr,
+}
+
+impl FromStr for PipelineKind {
+    type Err = PdfConvertError;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "legacy" => Ok(Self::Legacy),
+            "standard" => Ok(Self::Standard),
+            "vlm" => Ok(Self::Vlm),
+            "asr" => Ok(Self::Asr),
+            other => Err(PdfConvertError::validation_error(
+                "pipeline",
+                format!("unsupported pipeline: {other}"),
             )),
         }
     }
@@ -140,8 +271,8 @@ impl InputDocument {
             return Ok(input_kind);
         }
 
-        InputKind::from_filename_and_media_type(&self.filename, Some(&self.media_type))
-            .ok_or_else(|| {
+        InputKind::from_filename_and_media_type(&self.filename, Some(&self.media_type)).ok_or_else(
+            || {
                 let reason = if InputKind::requires_explicit_override(
                     &self.filename,
                     Some(&self.media_type),
@@ -156,11 +287,9 @@ impl InputDocument {
                         self.filename, self.media_type
                     )
                 };
-                PdfConvertError::validation_error(
-                    "input",
-                    reason,
-                )
-            })
+                PdfConvertError::validation_error("input", reason)
+            },
+        )
     }
 }
 
@@ -181,7 +310,7 @@ impl ConvertRequest {
             (_, InputKind::Pdf) => {
                 return Err(PdfConvertError::validation_error(
                     "options",
-                    "PDF input requires Pdf convert options",
+                    "PDF input requires PdfConvertOptions",
                 ));
             }
             (_, InputKind::Text) => {
@@ -205,8 +334,28 @@ impl ConvertRequest {
             ));
         }
 
-        if let ConvertOptions::Pdf(options) = &self.options {
-            options.validate()?;
+        let chunker = match &self.options {
+            ConvertOptions::Pdf(options) | ConvertOptions::Generic(options) => options.chunker,
+            ConvertOptions::Text(_) => ChunkerKind::None,
+        };
+
+        if chunker.is_enabled() && self.output_formats.iter().any(|format| format.is_archive()) {
+            return Err(PdfConvertError::validation_error(
+                "output_formats",
+                "native chunking cannot be combined with archive outputs",
+            ));
+        }
+
+        if self
+            .output_formats
+            .iter()
+            .any(|format| format.is_chunk_output())
+            && !chunker.is_enabled()
+        {
+            return Err(PdfConvertError::validation_error(
+                "chunker",
+                "chunks output requires hybrid or hierarchical chunking",
+            ));
         }
 
         Ok(kind)
@@ -220,51 +369,25 @@ pub enum ConvertOptions {
     Text(TextConvertOptions),
 }
 
-#[derive(Debug, Clone)]
-pub struct PdfConvertOptions {
-    pub pages_per_file: u32,
-    pub split_input: bool,
-    pub split_by_bookmark: bool,
-    pub chunking: bool,
-    pub batch_size: usize,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteConvertOptions {
+    pub chunker: ChunkerKind,
+    pub chunking: ChunkingOptions,
+    pub pipeline: Option<PipelineKind>,
 }
 
-impl Default for PdfConvertOptions {
+impl Default for RemoteConvertOptions {
     fn default() -> Self {
         Self {
-            pages_per_file: 5,
-            split_input: true,
-            split_by_bookmark: false,
-            chunking: false,
-            batch_size: 2,
+            chunker: ChunkerKind::None,
+            chunking: ChunkingOptions::hybrid_defaults(),
+            pipeline: None,
         }
     }
 }
 
-impl PdfConvertOptions {
-    pub fn validate(&self) -> Result<()> {
-        if self.pages_per_file == 0 {
-            return Err(PdfConvertError::validation_error(
-                "pages_per_file",
-                "value must be 1 or greater",
-            ));
-        }
-
-        if self.batch_size == 0 {
-            return Err(PdfConvertError::validation_error(
-                "batch_size",
-                "value must be 1 or greater",
-            ));
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct GenericFileConvertOptions {
-    pub chunking: bool,
-}
+pub type PdfConvertOptions = RemoteConvertOptions;
+pub type GenericFileConvertOptions = RemoteConvertOptions;
 
 #[derive(Debug, Clone)]
 pub struct TextConvertOptions {
@@ -282,22 +405,9 @@ impl Default for TextConvertOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConvertedChunk {
-    pub metadata: Option<ChunkMetadata>,
-    pub markdown: Option<String>,
-    pub text: Option<String>,
-    pub json: Option<Value>,
-    pub html: Option<String>,
-    pub doctags: Option<String>,
-    pub raw_result: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertedDocumentMetadata {
     pub input_kind: InputKind,
     pub media_type: String,
-    pub page_count: Option<u32>,
-    pub outlines: Vec<Bookmark>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,10 +415,14 @@ pub struct ConvertedDocument {
     pub filename: String,
     pub markdown: Option<String>,
     pub text: Option<String>,
-    pub json: Option<Value>,
+    pub json: Option<serde_json::Value>,
     pub html: Option<String>,
     pub doctags: Option<String>,
-    pub chunks: Vec<ConvertedChunk>,
+    pub doclang: Option<String>,
+    pub chunks: Vec<DoclingChunk>,
+    pub chunk_response: Option<ChunkDocumentResponse>,
+    #[serde(skip)]
+    pub archive: Option<Vec<u8>>,
     pub metadata: ConvertedDocumentMetadata,
     pub errors: Vec<String>,
 }
@@ -336,61 +450,79 @@ mod tests {
     use super::*;
 
     #[test]
-    fn output_format_supports_html_and_doctags() {
-        assert_eq!("html".parse::<OutputFormat>().unwrap(), OutputFormat::Html);
-        assert_eq!(
-            "doctags".parse::<OutputFormat>().unwrap(),
-            OutputFormat::Doctags
+    fn output_format_supports_native_and_archive_outputs() {
+        for (value, format) in [
+            ("md", OutputFormat::Md),
+            ("markdown", OutputFormat::Md),
+            ("json", OutputFormat::Json),
+            ("yaml", OutputFormat::Yaml),
+            ("yml", OutputFormat::Yaml),
+            ("html", OutputFormat::Html),
+            ("html_split_page", OutputFormat::HtmlSplitPage),
+            ("html-split-page", OutputFormat::HtmlSplitPage),
+            ("text", OutputFormat::Text),
+            ("txt", OutputFormat::Text),
+            ("doctags", OutputFormat::Doctags),
+            ("vtt", OutputFormat::Vtt),
+            ("doclang", OutputFormat::Doclang),
+            ("dclx", OutputFormat::Dclx),
+            ("chunks", OutputFormat::Chunks),
+        ] {
+            assert_eq!(value.parse::<OutputFormat>().unwrap(), format);
+        }
+
+        assert_eq!(OutputFormat::Chunks.extension(), "chunks.json");
+        for format in [
+            OutputFormat::Yaml,
+            OutputFormat::HtmlSplitPage,
+            OutputFormat::Vtt,
+            OutputFormat::Dclx,
+        ] {
+            assert_eq!(format.extension(), "zip");
+            assert!(format.is_archive());
+        }
+    }
+
+    #[test]
+    fn chunking_rejects_archive_outputs() {
+        let request = ConvertRequest {
+            input: InputDocument::new("a.pdf", "application/pdf", Bytes::from_static(b"%PDF")),
+            output_formats: vec![OutputFormat::Yaml],
+            options: ConvertOptions::Pdf(RemoteConvertOptions {
+                chunker: ChunkerKind::Hybrid,
+                ..RemoteConvertOptions::default()
+            }),
+        };
+
+        assert!(
+            request
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("archive")
         );
-        assert_eq!(OutputFormat::Html.extension(), "html");
-        assert_eq!(OutputFormat::Doctags.extension(), "doctags");
     }
 
     #[test]
-    fn request_validation_rejects_mismatched_options() {
-        let request = ConvertRequest {
-            input: InputDocument::new("a.txt", "text/plain", Bytes::from_static(b"hello")),
-            output_formats: vec![OutputFormat::Text],
-            options: ConvertOptions::Generic(GenericFileConvertOptions::default()),
-        };
-
-        let err = request.validate().unwrap_err();
-        assert!(err.to_string().contains("TextConvertOptions"));
-    }
-
-    #[test]
-    fn request_validation_rejects_zero_pages_per_file() {
+    fn chunks_require_a_native_chunker() {
         let request = ConvertRequest {
             input: InputDocument::new("a.pdf", "application/pdf", Bytes::from_static(b"%PDF")),
-            output_formats: vec![OutputFormat::Text],
-            options: ConvertOptions::Pdf(PdfConvertOptions {
-                pages_per_file: 0,
-                ..PdfConvertOptions::default()
-            }),
+            output_formats: vec![OutputFormat::Chunks],
+            options: ConvertOptions::Pdf(RemoteConvertOptions::default()),
         };
 
-        let err = request.validate().unwrap_err();
-        assert!(err.to_string().contains("pages_per_file"));
-    }
-
-    #[test]
-    fn request_validation_rejects_zero_batch_size() {
-        let request = ConvertRequest {
-            input: InputDocument::new("a.pdf", "application/pdf", Bytes::from_static(b"%PDF")),
-            output_formats: vec![OutputFormat::Text],
-            options: ConvertOptions::Pdf(PdfConvertOptions {
-                batch_size: 0,
-                ..PdfConvertOptions::default()
-            }),
-        };
-
-        let err = request.validate().unwrap_err();
-        assert!(err.to_string().contains("batch_size"));
+        assert!(
+            request
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("requires")
+        );
     }
 
     #[test]
     fn ambiguous_xml_requires_explicit_override() {
-        let err = InputDocument::new(
+        let error = InputDocument::new(
             "paper.xml",
             "application/xml",
             Bytes::from_static(b"<article />"),
@@ -398,31 +530,6 @@ mod tests {
         .kind()
         .unwrap_err();
 
-        assert!(err.to_string().contains("explicit input_format override"));
-    }
-
-    #[test]
-    fn override_resolves_ambiguous_sources() {
-        let input = InputDocument::new(
-            "paper.xml",
-            "application/xml",
-            Bytes::from_static(b"<article />"),
-        )
-        .with_input_kind(InputKind::XmlJats);
-
-        assert_eq!(input.kind().unwrap(), InputKind::XmlJats);
-    }
-
-    #[test]
-    fn from_path_and_bytes_with_kind_preserves_override_kind() {
-        let input = InputDocument::from_path_and_bytes_with_kind(
-            Path::new("filing.json"),
-            Bytes::from_static(br#"{"schema":"docling"}"#),
-            InputKind::JsonDocling,
-        )
-        .unwrap();
-
-        assert_eq!(input.kind().unwrap(), InputKind::JsonDocling);
-        assert_eq!(input.media_type, "application/json");
+        assert!(error.to_string().contains("explicit input_format override"));
     }
 }

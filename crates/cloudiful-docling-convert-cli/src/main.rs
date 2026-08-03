@@ -30,7 +30,7 @@ async fn main() {
     log::debug!("Input paths: {:?}", args.input_files);
     log::debug!("Output directory: {}", args.output_dir.display());
     log::debug!("Output format: {}", args.format);
-    log::debug!("Split input: {}", args.split_input);
+    log::debug!("Chunker: {}", args.chunker);
 
     if let Err(e) = run_conversions(args).await {
         error!("Conversion failed: {}", e);
@@ -239,7 +239,7 @@ async fn convert_single_file(file_path: std::path::PathBuf, args: Args) -> Resul
     let input_kind = input.kind()?;
     let converter = DocumentConverter::new(create_docling_client(&args)?);
     converter
-        .convert_to_file(FileConvertRequest {
+        .convert_to_file_async(FileConvertRequest {
             request: ConvertRequest {
                 input,
                 output_formats: vec![args.format],

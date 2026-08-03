@@ -17,7 +17,9 @@
 
 	const supportedExtensions = [
 		'.pdf',
+		'.doc',
 		'.docx',
+		'.ppt',
 		'.pptx',
 		'.html',
 		'.htm',
@@ -29,6 +31,7 @@
 		'.markdown',
 		'.csv',
 		'.xlsx',
+		'.xls',
 		'.odt',
 		'.ods',
 		'.odp',
@@ -47,6 +50,20 @@
 		'.xml',
 		'.json',
 		'.tex',
+		'.dclx',
+		'.wav',
+		'.mp3',
+		'.m4a',
+		'.flac',
+		'.ogg',
+		'.aac',
+		'.mp4',
+		'.mov',
+		'.avi',
+		'.mkv',
+		'.webm',
+		'.vtt',
+		'.boxnote',
 		'.txt'
 	];
 	const acceptedFormats = supportedExtensions.join(',');

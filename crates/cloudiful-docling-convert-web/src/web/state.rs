@@ -4,13 +4,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use cloudiful_docling_convert::{ChunkerKind, ChunkingOptions, PipelineKind};
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     Pending,
     Processing,
     Completed,
+    Partial,
     Failed,
+    Skipped,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -32,11 +36,9 @@ pub struct ConversionTask {
 pub struct TaskConfig {
     pub format: String,
     pub input_format: Option<String>,
-    pub pages_per_file: u32,
-    pub split_input: bool,
-    pub split_by_bookmark: bool,
-    pub chunking: bool,
-    pub batch_size: usize,
+    pub chunker: ChunkerKind,
+    pub chunking_options: ChunkingOptions,
+    pub pipeline: Option<PipelineKind>,
 }
 
 impl Default for TaskConfig {
@@ -44,11 +46,9 @@ impl Default for TaskConfig {
         Self {
             format: "md".to_string(),
             input_format: None,
-            pages_per_file: 5,
-            split_input: true,
-            split_by_bookmark: false,
-            chunking: false,
-            batch_size: 2,
+            chunker: ChunkerKind::None,
+            chunking_options: ChunkingOptions::hybrid_defaults(),
+            pipeline: None,
         }
     }
 }
@@ -156,7 +156,13 @@ impl AppState {
     ) -> bool {
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.get_mut(task_id) {
-            let should_set_completed = matches!(status, TaskStatus::Completed | TaskStatus::Failed);
+            let should_set_completed = matches!(
+                status,
+                TaskStatus::Completed
+                    | TaskStatus::Partial
+                    | TaskStatus::Failed
+                    | TaskStatus::Skipped
+            );
             task.status = status;
             task.progress = progress;
             task.message = message;
@@ -204,12 +210,37 @@ impl AppState {
     }
 
     pub async fn set_task_output(&self, task_id: &str, output_url: String) -> bool {
+        self.set_task_output_status(
+            task_id,
+            output_url,
+            TaskStatus::Completed,
+            0,
+            Some("Conversion completed".to_string()),
+        )
+        .await
+    }
+
+    pub async fn set_task_output_status(
+        &self,
+        task_id: &str,
+        output_url: String,
+        status: TaskStatus,
+        total_chunks: u32,
+        message: Option<String>,
+    ) -> bool {
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.get_mut(task_id) {
-            task.status = TaskStatus::Completed;
-            task.progress = 100;
+            task.status = status;
+            task.progress = if matches!(&task.status, TaskStatus::Failed | TaskStatus::Skipped) {
+                task.progress
+            } else {
+                100
+            };
+            if total_chunks > 0 {
+                task.total_chunks = total_chunks;
+            }
             task.completed_chunks = task.total_chunks.max(task.completed_chunks);
-            task.message = Some("Conversion completed".to_string());
+            task.message = message;
             task.output_url = Some(output_url);
             task.completed_at = Some(chrono::Utc::now());
             true

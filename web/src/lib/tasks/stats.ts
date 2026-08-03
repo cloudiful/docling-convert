@@ -3,6 +3,7 @@ import type { Task } from '$lib/types/tasks';
 export interface ProgressStats {
 	totalTasks: number;
 	completedTasks: number;
+	partialTasks: number;
 	failedTasks: number;
 	pendingTasks: number;
 	processingTasks: number;
@@ -18,6 +19,7 @@ export function computeProgressStats(
 	const processingTasks = tasks.filter((task) => task.status === 'processing');
 	const totalTasks = tasks.length;
 	const completedTasks = tasks.filter((task) => task.status === 'completed').length;
+	const partialTasks = tasks.filter((task) => task.status === 'partial').length;
 	const failedTasks = tasks.filter((task) => task.status === 'failed').length;
 	const pendingTasks = tasks.filter((task) => task.status === 'pending').length;
 
@@ -61,6 +63,7 @@ export function computeProgressStats(
 	return {
 		totalTasks,
 		completedTasks,
+		partialTasks,
 		failedTasks,
 		pendingTasks,
 		processingTasks: processingTasks.length,

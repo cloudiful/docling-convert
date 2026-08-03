@@ -1,11 +1,11 @@
+use std::time::Duration;
+
 use crate::api::{DoclingClient, DoclingConfig};
 use crate::document::{
-    ConvertOptions, GenericFileConvertOptions, InputDocument, InputKind, PdfConvertOptions,
+    ChunkerKind, ChunkingOptions, ConvertOptions, InputKind, PipelineKind, RemoteConvertOptions,
     TextConvertOptions,
 };
-use crate::error::{PdfConvertError, Result};
-use crate::pdf::PdfInfo;
-use crate::processor::build_pdf_chunk_plan;
+use crate::error::Result;
 
 #[derive(Debug, Clone)]
 pub struct DoclingRuntimeConfig {
@@ -15,6 +15,9 @@ pub struct DoclingRuntimeConfig {
     pub picture_description_model: String,
     pub code_formula_model: String,
     pub api_key: Option<String>,
+    pub tenant_id: Option<String>,
+    pub openai_api_key: Option<String>,
+    pub request_timeout: Option<Duration>,
 }
 
 impl DoclingRuntimeConfig {
@@ -26,7 +29,22 @@ impl DoclingRuntimeConfig {
             picture_description_model: String::new(),
             code_formula_model: String::new(),
             api_key: None,
+            tenant_id: None,
+            openai_api_key: None,
+            request_timeout: None,
         }
+    }
+
+    pub fn from_env(docling_base_url: impl Into<String>) -> Self {
+        let mut config = Self::without_vlm(docling_base_url);
+        config.api_key = std::env::var("DOCLING_API_KEY").ok();
+        config.tenant_id = std::env::var("DOCLING_TENANT_ID").ok();
+        config.openai_api_key = std::env::var("OPENAI_API_KEY").ok();
+        config.request_timeout = std::env::var("DOCLING_HTTP_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_secs);
+        config
     }
 
     pub fn into_docling_config(self) -> DoclingConfig {
@@ -36,28 +54,33 @@ impl DoclingRuntimeConfig {
             vlm_pipeline_model: self.vlm_pipeline_model,
             picture_description_model: self.picture_description_model,
             code_formula_model: self.code_formula_model,
-            api_key: self.api_key,
+            api_key: self
+                .api_key
+                .or_else(|| std::env::var("DOCLING_API_KEY").ok()),
+            openai_api_key: self
+                .openai_api_key
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok()),
+            tenant_id: self
+                .tenant_id
+                .or_else(|| std::env::var("DOCLING_TENANT_ID").ok()),
+            request_timeout: self.request_timeout,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversionBehavior {
-    pub pages_per_file: u32,
-    pub split_input: bool,
-    pub split_by_bookmark: bool,
-    pub chunking: bool,
-    pub batch_size: usize,
+    pub chunker: ChunkerKind,
+    pub chunking: ChunkingOptions,
+    pub pipeline: Option<PipelineKind>,
 }
 
 impl Default for ConversionBehavior {
     fn default() -> Self {
         Self {
-            pages_per_file: 5,
-            split_input: true,
-            split_by_bookmark: false,
-            chunking: false,
-            batch_size: 2,
+            chunker: ChunkerKind::None,
+            chunking: ChunkingOptions::hybrid_defaults(),
+            pipeline: None,
         }
     }
 }
@@ -70,62 +93,19 @@ pub fn build_convert_options(
     input_kind: InputKind,
     behavior: &ConversionBehavior,
 ) -> Result<ConvertOptions> {
+    let remote_options = RemoteConvertOptions {
+        chunker: behavior.chunker,
+        chunking: behavior.chunking.clone(),
+        pipeline: behavior.pipeline,
+    };
+
     if matches!(input_kind, InputKind::Pdf) {
-        Ok(ConvertOptions::Pdf(PdfConvertOptions {
-            pages_per_file: behavior.pages_per_file,
-            split_input: behavior.split_input,
-            split_by_bookmark: behavior.split_by_bookmark,
-            chunking: behavior.chunking,
-            batch_size: behavior.batch_size,
-        }))
+        Ok(ConvertOptions::Pdf(remote_options))
     } else if input_kind.uses_generic_convert_options() {
-        reject_pdf_only_options(input_kind, behavior)?;
-        Ok(ConvertOptions::Generic(GenericFileConvertOptions {
-            chunking: behavior.chunking,
-        }))
+        Ok(ConvertOptions::Generic(remote_options))
     } else {
-        reject_pdf_only_options(input_kind, behavior)?;
         Ok(ConvertOptions::Text(TextConvertOptions::default()))
     }
-}
-
-pub fn build_pdf_options(behavior: &ConversionBehavior) -> Result<PdfConvertOptions> {
-    let options = PdfConvertOptions {
-        pages_per_file: behavior.pages_per_file,
-        split_input: behavior.split_input,
-        split_by_bookmark: behavior.split_by_bookmark,
-        chunking: behavior.chunking,
-        batch_size: behavior.batch_size,
-    };
-    options.validate()?;
-    Ok(options)
-}
-
-pub fn count_input_chunks(input: &InputDocument, behavior: &ConversionBehavior) -> Result<usize> {
-    match input.kind()? {
-        InputKind::Pdf => {
-            let pdf_info = PdfInfo::load_from_bytes(input.bytes.as_ref())?;
-            let total = build_pdf_chunk_plan(&build_pdf_options(behavior)?, &pdf_info)
-                .len()
-                .max(1);
-            Ok(total)
-        }
-        _ => Ok(1),
-    }
-}
-
-fn reject_pdf_only_options(input_kind: InputKind, behavior: &ConversionBehavior) -> Result<()> {
-    if behavior.split_by_bookmark {
-        return Err(PdfConvertError::validation_error(
-            "split_by_bookmark",
-            format!(
-                "bookmark splitting is only available for PDF inputs, got {:?}",
-                input_kind
-            ),
-        ));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -133,24 +113,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generic_input_rejects_bookmark_splitting() {
-        let err = build_convert_options(
-            InputKind::Docx,
-            &ConversionBehavior {
-                split_by_bookmark: true,
-                ..ConversionBehavior::default()
-            },
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("bookmark splitting"));
+    fn default_behavior_uses_normal_conversion() {
+        assert_eq!(ConversionBehavior::default().chunker, ChunkerKind::None);
     }
 
     #[test]
-    fn second_wave_inputs_use_generic_convert_options() {
-        let options =
-            build_convert_options(InputKind::XmlJats, &ConversionBehavior::default()).unwrap();
+    fn generic_inputs_use_native_chunker_options() {
+        let options = build_convert_options(
+            InputKind::Docx,
+            &ConversionBehavior {
+                chunker: ChunkerKind::Hierarchical,
+                ..ConversionBehavior::default()
+            },
+        )
+        .unwrap();
 
         assert!(matches!(options, ConvertOptions::Generic(_)));
+    }
+
+    #[test]
+    fn text_inputs_remain_local() {
+        let options =
+            build_convert_options(InputKind::Text, &ConversionBehavior::default()).unwrap();
+        assert!(matches!(options, ConvertOptions::Text(_)));
+    }
+
+    #[test]
+    fn runtime_config_keeps_docling_and_openai_keys_separate() {
+        let config =
+            DoclingRuntimeConfig::without_vlm("http://localhost:5001/v1").into_docling_config();
+        assert!(config.api_key.is_none());
+        assert!(config.openai_api_key.is_none());
     }
 }

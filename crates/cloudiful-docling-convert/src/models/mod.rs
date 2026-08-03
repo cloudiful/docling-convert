@@ -1,9 +1,11 @@
 pub mod api;
-pub mod pdf;
 pub mod vlm;
 
-pub(crate) use api::{TaskPostResponse, TaskStatusResponse};
-pub use pdf::{Bookmark, ChunkMetadata, PdfInfo};
+pub use api::{
+    ChunkDocumentResponse, ConversionStatus, ConvertDocumentResponse, DoclingChunk,
+    DoclingErrorItem, DocumentResultItem, ExportDocumentResponse, PublicFailureInfo,
+    TaskFailureResult, TaskPostResponse, TaskProcessingMeta, TaskStatusResponse,
+};
 pub use vlm::{CodeFormulaVlmOptions, PictureDescriptionVlmEngineOptions};
 
 #[cfg(test)]

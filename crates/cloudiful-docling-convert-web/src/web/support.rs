@@ -73,16 +73,21 @@ pub fn create_docling_client(state: &AppState) -> Result<DoclingClient, PdfConve
         vlm_pipeline_model: state.vlm_pipeline_model.clone(),
         picture_description_model: state.picture_description_model.clone(),
         code_formula_model: state.code_formula_model.clone(),
-        api_key: std::env::var("OPENAI_API_KEY").ok(),
+        api_key: std::env::var("DOCLING_API_KEY").ok(),
+        tenant_id: std::env::var("DOCLING_TENANT_ID").ok(),
+        openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+        request_timeout: None,
     })
 }
 
 pub fn output_content_type(format: &str) -> &'static str {
     match format {
         "json" => "application/json",
+        "chunks" => "application/json",
+        "yaml" | "html_split_page" | "vtt" | "dclx" => "application/zip",
         "text" => "text/plain; charset=utf-8",
         "html" => "text/html; charset=utf-8",
-        "doctags" => "text/plain; charset=utf-8",
+        "doctags" | "doclang" => "text/plain; charset=utf-8",
         _ => "text/markdown; charset=utf-8",
     }
 }

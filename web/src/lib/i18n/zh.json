@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "文档转换器",
-    "description": "将文档转换为 Markdown、JSON、文本、HTML 或 DocTags 格式"
+    "description": "使用 Docling Serve 转换文档"
   },
   "header": {
     "settings": "设置"
@@ -11,7 +11,7 @@
     "dragDrop": "拖拽受支持的文档到此处，或点击浏览",
     "browse": "浏览文件",
     "uploading": "上传中...",
-    "formats": "支持 PDF、DOCX、PPTX、HTML、AsciiDoc、CSV、XLSX、ODT/ODS/ODP、EPUB、邮件、图片、Markdown、文本、XML、JSON 和 LaTeX 文件"
+    "formats": "支持文档、表格、演示文稿、图片、音频、视频、字幕和 Docling 文档包"
   },
   "url": {
     "title": "从 URL 转换",
@@ -25,9 +25,15 @@
     "format": "输出格式",
     "formatMd": "Markdown",
     "formatJson": "JSON",
+    "formatYaml": "YAML",
     "formatText": "文本",
     "formatHtml": "HTML",
+    "formatHtmlSplitPage": "分页 HTML",
     "formatDoctags": "DocTags",
+    "formatVtt": "WebVTT",
+    "formatDoclang": "Docling 文档",
+    "formatDclx": "DCLX",
+    "formatChunks": "Chunks JSON",
     "inputFormat": "输入格式",
     "inputFormatAuto": "自动",
     "inputFormatXmlUspto": "XML USPTO",
@@ -37,12 +43,23 @@
     "inputFormatMetsGbs": "METS GBS",
     "inputFormatJsonDocling": "JSON Docling",
     "inputFormatLatex": "LaTeX",
-    "pagesPerFile": "每文件页数",
-    "batchSize": "批处理大小",
-    "splitInput": "拆分输入 PDF",
-    "splitOutput": "拆分输出文件",
-    "splitByBookmark": "按书签拆分",
-    "chunking": "启用分块"
+    "chunker": "分块器",
+    "chunkerNone": "不分块",
+    "chunkerHybrid": "Hybrid",
+    "chunkerHierarchical": "Hierarchical",
+    "pipeline": "管线",
+    "pipelineDefault": "Docling 默认",
+    "pipelineLegacy": "Legacy",
+    "pipelineStandard": "Standard",
+    "pipelineVlm": "VLM",
+    "pipelineAsr": "ASR",
+    "useMarkdownTables": "使用 Markdown 表格",
+    "useMarkdownImages": "使用 Markdown 图片",
+    "imagePlaceholder": "图片占位符",
+    "includeRawText": "包含原始文本",
+    "maxTokens": "最大 Token 数",
+    "tokenizer": "Tokenizer",
+    "mergePeers": "合并相邻分块"
   },
   "tasks": {
     "title": "转换任务",
@@ -52,6 +69,8 @@
       "pending": "等待中",
       "processing": "处理中",
       "completed": "已完成",
+      "partial": "部分完成",
+      "skipped": "已跳过",
       "failed": "失败"
     },
     "progress": "进度",

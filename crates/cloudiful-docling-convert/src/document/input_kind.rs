@@ -9,13 +9,16 @@ use crate::error::{PdfConvertError, Result};
 #[serde(rename_all = "snake_case")]
 pub enum InputKind {
     Pdf,
+    Doc,
     Docx,
+    Ppt,
     Pptx,
     Html,
     Asciidoc,
     Markdown,
     Csv,
     Xlsx,
+    Xls,
     Odt,
     Ods,
     Odp,
@@ -28,6 +31,11 @@ pub enum InputKind {
     XmlDoclang,
     MetsGbs,
     JsonDocling,
+    Dclx,
+    Audio,
+    Video,
+    Vtt,
+    Boxnote,
     Latex,
     Text,
 }
@@ -62,6 +70,19 @@ const INPUT_KIND_SPECS: &[InputKindSpec] = &[
         supports_vlm: true,
     },
     InputKindSpec {
+        kind: InputKind::Doc,
+        extensions: &["doc"],
+        media_types: &["application/msword"],
+        default_extension: "doc",
+        default_media_type: "application/msword",
+        from_formats_value: "doc",
+        parse_aliases: &["doc"],
+        reading_label: "Reading DOC...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: true,
+    },
+    InputKindSpec {
         kind: InputKind::Docx,
         extensions: &["docx"],
         media_types: &["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
@@ -83,6 +104,19 @@ const INPUT_KIND_SPECS: &[InputKindSpec] = &[
         from_formats_value: "pptx",
         parse_aliases: &["pptx"],
         reading_label: "Reading PPTX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Ppt,
+        extensions: &["ppt"],
+        media_types: &["application/vnd.ms-powerpoint"],
+        default_extension: "ppt",
+        default_media_type: "application/vnd.ms-powerpoint",
+        from_formats_value: "ppt",
+        parse_aliases: &["ppt"],
+        reading_label: "Reading PPT...",
         auto_detect: true,
         generic_convert_options: true,
         supports_vlm: false,
@@ -148,6 +182,19 @@ const INPUT_KIND_SPECS: &[InputKindSpec] = &[
         from_formats_value: "xlsx",
         parse_aliases: &["xlsx"],
         reading_label: "Reading XLSX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Xls,
+        extensions: &["xls"],
+        media_types: &["application/vnd.ms-excel"],
+        default_extension: "xls",
+        default_media_type: "application/vnd.ms-excel",
+        from_formats_value: "xls",
+        parse_aliases: &["xls"],
+        reading_label: "Reading XLS...",
         auto_detect: true,
         generic_convert_options: true,
         supports_vlm: false,
@@ -337,6 +384,85 @@ const INPUT_KIND_SPECS: &[InputKindSpec] = &[
         supports_vlm: false,
     },
     InputKindSpec {
+        kind: InputKind::Dclx,
+        extensions: &["dclx"],
+        media_types: &["application/zip", "application/vnd.docling.dclx"],
+        default_extension: "dclx",
+        default_media_type: "application/vnd.docling.dclx",
+        from_formats_value: "dclx",
+        parse_aliases: &["dclx"],
+        reading_label: "Reading DCLX...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Audio,
+        extensions: &["wav", "mp3", "m4a", "flac", "ogg", "aac"],
+        media_types: &[
+            "audio/wav",
+            "audio/x-wav",
+            "audio/mpeg",
+            "audio/mp4",
+            "audio/flac",
+            "audio/ogg",
+            "audio/aac",
+        ],
+        default_extension: "wav",
+        default_media_type: "audio/wav",
+        from_formats_value: "audio",
+        parse_aliases: &["audio"],
+        reading_label: "Reading audio...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Video,
+        extensions: &["mp4", "mov", "avi", "mkv", "webm"],
+        media_types: &[
+            "video/mp4",
+            "video/quicktime",
+            "video/x-msvideo",
+            "video/x-matroska",
+            "video/webm",
+        ],
+        default_extension: "mp4",
+        default_media_type: "video/mp4",
+        from_formats_value: "video",
+        parse_aliases: &["video"],
+        reading_label: "Reading video...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Vtt,
+        extensions: &["vtt"],
+        media_types: &["text/vtt"],
+        default_extension: "vtt",
+        default_media_type: "text/vtt",
+        from_formats_value: "vtt",
+        parse_aliases: &["vtt"],
+        reading_label: "Reading VTT...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
+        kind: InputKind::Boxnote,
+        extensions: &["boxnote"],
+        media_types: &["application/boxnote", "application/vnd.box.note"],
+        default_extension: "boxnote",
+        default_media_type: "application/boxnote",
+        from_formats_value: "boxnote",
+        parse_aliases: &["boxnote"],
+        reading_label: "Reading Box Note...",
+        auto_detect: true,
+        generic_convert_options: true,
+        supports_vlm: false,
+    },
+    InputKindSpec {
         kind: InputKind::Text,
         extensions: &["txt"],
         media_types: &["text/plain"],
@@ -402,6 +528,8 @@ impl InputKind {
                 _ => self.media_type(),
             },
             Self::Image => image_media_type(ext.as_deref(), media_type.as_deref()),
+            Self::Audio => audio_media_type(ext.as_deref(), media_type.as_deref()),
+            Self::Video => video_media_type(ext.as_deref(), media_type.as_deref()),
             _ => self.media_type(),
         }
     }
@@ -508,6 +636,27 @@ fn image_extension(media_type: Option<&str>) -> &'static str {
         Some("image/webp") => "webp",
         Some("image/svg+xml") => "svg",
         _ => "png",
+    }
+}
+
+fn audio_media_type(extension: Option<&str>, media_type: Option<&str>) -> &'static str {
+    match (extension, media_type) {
+        (Some("mp3"), _) | (_, Some("audio/mpeg")) => "audio/mpeg",
+        (Some("m4a"), _) | (_, Some("audio/mp4")) => "audio/mp4",
+        (Some("flac"), _) | (_, Some("audio/flac")) => "audio/flac",
+        (Some("ogg"), _) | (_, Some("audio/ogg")) => "audio/ogg",
+        (Some("aac"), _) | (_, Some("audio/aac")) => "audio/aac",
+        _ => "audio/wav",
+    }
+}
+
+fn video_media_type(extension: Option<&str>, media_type: Option<&str>) -> &'static str {
+    match (extension, media_type) {
+        (Some("mov"), _) | (_, Some("video/quicktime")) => "video/quicktime",
+        (Some("avi"), _) | (_, Some("video/x-msvideo")) => "video/x-msvideo",
+        (Some("mkv"), _) | (_, Some("video/x-matroska")) => "video/x-matroska",
+        (Some("webm"), _) | (_, Some("video/webm")) => "video/webm",
+        _ => "video/mp4",
     }
 }
 
@@ -618,13 +767,15 @@ mod tests {
 
     #[test]
     fn parses_input_format_strings() {
-        assert_eq!("xml_jats".parse::<InputKind>().unwrap(), InputKind::XmlJats);
-        assert_eq!(
-            "json_docling".parse::<InputKind>().unwrap(),
-            InputKind::JsonDocling
-        );
-        assert_eq!("latex".parse::<InputKind>().unwrap(), InputKind::Latex);
-        assert_eq!("msg".parse::<InputKind>().unwrap(), InputKind::Email);
+        for spec in INPUT_KIND_SPECS {
+            for alias in spec.parse_aliases {
+                assert_eq!(
+                    alias.parse::<InputKind>().unwrap(),
+                    spec.kind,
+                    "failed to parse input alias '{alias}'"
+                );
+            }
+        }
         assert!("xml".parse::<InputKind>().is_err());
     }
 
@@ -641,6 +792,22 @@ mod tests {
         assert_eq!(
             InputKind::Html.canonical_media_type("page.xhtml", None),
             "application/xhtml+xml"
+        );
+        assert_eq!(
+            InputKind::Audio.canonical_media_type("recording.mp3", None),
+            "audio/mpeg"
+        );
+        assert_eq!(
+            InputKind::Audio.canonical_media_type("recording.m4a", None),
+            "audio/mp4"
+        );
+        assert_eq!(
+            InputKind::Video.canonical_media_type("clip.mov", None),
+            "video/quicktime"
+        );
+        assert_eq!(
+            InputKind::Video.canonical_media_type("clip.mkv", None),
+            "video/x-matroska"
         );
     }
 }

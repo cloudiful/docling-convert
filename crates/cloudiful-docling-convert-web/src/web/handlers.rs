@@ -9,10 +9,7 @@ use axum::{
 use tokio_util::io::ReaderStream;
 use tower_http::services::ServeDir;
 
-use super::conversion::{
-    estimated_total_chunks_for_input, process_file_conversion, process_url_conversion,
-    spawn_conversion_task,
-};
+use super::conversion::{process_file_conversion, process_url_conversion, spawn_conversion_task};
 use super::state::{AppState, ConversionTask, TaskConfig, TaskStatus};
 use super::support::{
     output_content_type, parse_input_format, resolve_input_kind, sanitize_filename,
@@ -72,10 +69,8 @@ pub async fn upload_file(
         data,
     )
     .with_input_kind(input_kind);
-    let total_chunks = estimated_total_chunks_for_input(&input, &config);
-
     let task_id = state
-        .create_task(file_name.clone(), config.clone(), total_chunks)
+        .create_task(file_name.clone(), config.clone(), 0)
         .await;
 
     spawn_file_task(state.clone(), task_id.clone(), input, config);
@@ -96,7 +91,8 @@ pub async fn submit_url(
     }
 
     let url = payload.url.trim().to_string();
-    if !url.starts_with("http://") && !url.starts_with("https://") {
+    let parsed_url = reqwest::Url::parse(&url).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if !matches!(parsed_url.scheme(), "http" | "https") {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -130,7 +126,9 @@ pub async fn download_file(
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    if task.status != TaskStatus::Completed || task.output_url.is_none() {
+    if !matches!(&task.status, TaskStatus::Completed | TaskStatus::Partial)
+        || task.output_url.is_none()
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
 

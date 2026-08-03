@@ -1,11 +1,15 @@
-use axum::body::Bytes;
-use cloudiful_docling_convert::{InputDocument, InputKind, PdfConvertError};
-use reqwest::Response;
+use std::path::Path;
 
-use super::super::state::{AppState, TaskConfig};
-use super::super::support::parse_input_format;
-use super::file::process_file_conversion;
-use super::support::{MAX_REMOTE_DOWNLOAD_BYTES, update_processing_status, validate_pdf_download};
+use cloudiful_docling_convert::{
+    DocumentConverter, InputKind, PdfConvertError, RemoteConvertOptions,
+};
+
+use super::super::state::{AppState, TaskConfig, TaskStatus};
+use super::super::support::{create_docling_client, parse_input_format, parse_output_format};
+use super::support::{
+    behavior_from_task_config, ensure_task_temp_dir, finalize_task_output, update_docling_status,
+    update_processing_status,
+};
 
 pub async fn process_url_conversion(
     state: AppState,
@@ -14,152 +18,72 @@ pub async fn process_url_conversion(
     fallback_file_name: String,
     config: TaskConfig,
 ) -> Result<(), PdfConvertError> {
-    update_processing_status(&state, &task_id, 10, "Downloading from URL...").await;
-
-    let response = state
-        .http_client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(120))
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                PdfConvertError::validation_error(
-                    "url",
-                    "Download timed out. Please check the URL or try again.",
-                )
-            } else if e.is_connect() {
-                PdfConvertError::validation_error(
-                    "url",
-                    "Failed to connect to URL. Please check the URL is correct.",
-                )
-            } else {
-                PdfConvertError::validation_error("url", format!("Network error: {}", e))
-            }
-        })?;
-
-    let status = response.status();
-    if !status.is_success() {
-        return Err(PdfConvertError::validation_error(
-            "url",
-            format!(
-                "HTTP error {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            ),
-        ));
-    }
-
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let file_data = read_response_body_limited(response).await?;
-
-    let mut file_name = if fallback_file_name.is_empty() {
-        "downloaded".to_string()
-    } else {
-        fallback_file_name
-    };
-    let override_kind = config
+    let input_kind = config
         .input_format
         .as_deref()
         .map(parse_input_format)
-        .transpose()?;
-    let detected_kind = InputKind::from_filename_and_media_type(&file_name, Some(&content_type));
-    let input_kind = if let Some(input_kind) = override_kind {
-        input_kind
-    } else if let Some(input_kind) = detected_kind {
-        input_kind
-    } else {
-        let reason = if InputKind::requires_explicit_override(&file_name, Some(&content_type)) {
-            format!(
-                "ambiguous downloaded file type '{}', content-type '{}'; provide input_format",
-                file_name, content_type
+        .transpose()?
+        .or_else(|| InputKind::from_path(Path::new(&fallback_file_name)))
+        .ok_or_else(|| {
+            PdfConvertError::validation_error(
+                "input_format",
+                "URL filename has no supported extension; provide input_format",
             )
-        } else {
-            format!(
-                "unsupported downloaded file type '{}', content-type '{}'",
-                file_name, content_type
-            )
-        };
-        return Err(PdfConvertError::validation_error("url", reason));
-    };
-
-    if std::path::Path::new(&file_name).extension().is_none() {
-        file_name = format!(
-            "{}.{}",
-            file_name,
-            input_kind.default_extension_for_media_type(Some(&content_type))
-        );
-    }
-
+        })?;
+    let output_format = parse_output_format(&config.format)?;
+    let behavior = behavior_from_task_config(&config);
+    let temp_dir = ensure_task_temp_dir(&task_id).await?;
     update_processing_status(
         &state,
         &task_id,
-        20,
-        format!(
-            "Downloaded {:?} (Content-Type: {})",
-            input_kind, content_type
-        ),
+        10,
+        format!("Submitting {input_kind:?} source to Docling..."),
     )
     .await;
 
-    validate_pdf_download(input_kind, &file_data)?;
-
-    process_file_conversion(
-        state,
-        task_id,
-        InputDocument::new(
-            file_name.clone(),
-            input_kind.canonical_media_type(&file_name, Some(&content_type)),
-            file_data,
+    let converter = DocumentConverter::new(create_docling_client(&state)?);
+    let result = converter
+        .convert_source_to_file_async_with_docling_progress(
+            &url,
+            fallback_file_name,
+            input_kind,
+            vec![output_format],
+            &RemoteConvertOptions {
+                chunker: behavior.chunker,
+                chunking: behavior.chunking,
+                pipeline: behavior.pipeline,
+            },
+            temp_dir,
+            output_format,
+            true,
+            |status| {
+                let state = state.clone();
+                let task_id = task_id.clone();
+                async move { update_docling_status(&state, &task_id, &status).await }
+            },
         )
-        .with_input_kind(input_kind),
-        config,
+        .await?;
+
+    let total_chunks = result.document.chunks.len().max(1).min(u32::MAX as usize) as u32;
+    let status = if result.document.errors.is_empty() {
+        TaskStatus::Completed
+    } else {
+        TaskStatus::Partial
+    };
+    let message = if result.document.errors.is_empty() {
+        Some("Conversion completed".to_string())
+    } else {
+        Some(result.document.errors.join("; "))
+    };
+    finalize_task_output(
+        &state,
+        &task_id,
+        result.output_paths.into_iter().next().ok_or_else(|| {
+            PdfConvertError::operation_error("output", "no output file was produced")
+        })?,
+        status,
+        total_chunks,
+        message,
     )
     .await
-}
-
-async fn read_response_body_limited(mut response: Response) -> Result<Bytes, PdfConvertError> {
-    if let Some(content_length) = response.content_length() {
-        if content_length > MAX_REMOTE_DOWNLOAD_BYTES as u64 {
-            return Err(PdfConvertError::validation_error(
-                "url",
-                format!(
-                    "Downloaded file exceeds {} MB limit",
-                    MAX_REMOTE_DOWNLOAD_BYTES / (1024 * 1024)
-                ),
-            ));
-        }
-    }
-
-    let mut downloaded = 0usize;
-    let mut body = Vec::new();
-    if let Some(content_length) = response.content_length() {
-        body.reserve((content_length as usize).min(MAX_REMOTE_DOWNLOAD_BYTES));
-    }
-
-    while let Some(chunk) = response.chunk().await.map_err(|e| {
-        PdfConvertError::validation_error(
-            "url",
-            format!("Failed to read downloaded content: {}", e),
-        )
-    })? {
-        downloaded += chunk.len();
-        if downloaded > MAX_REMOTE_DOWNLOAD_BYTES {
-            return Err(PdfConvertError::validation_error(
-                "url",
-                format!(
-                    "Downloaded file exceeds {} MB limit",
-                    MAX_REMOTE_DOWNLOAD_BYTES / (1024 * 1024)
-                ),
-            ));
-        }
-        body.extend_from_slice(&chunk);
-    }
-
-    Ok(Bytes::from(body))
 }

@@ -74,7 +74,7 @@
 						</div>
 
 						<div class="flex items-center space-x-2 ml-4">
-							{#if task.status === 'completed' && task.output_url}
+							{#if (task.status === 'completed' || task.status === 'partial') && task.output_url}
 								<a
 									href={task.output_url}
 									download

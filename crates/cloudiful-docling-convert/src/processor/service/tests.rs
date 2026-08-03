@@ -19,6 +19,9 @@ fn test_converter() -> DocumentConverter {
         picture_description_model: "pic".to_string(),
         code_formula_model: "code".to_string(),
         api_key: None,
+        tenant_id: None,
+        openai_api_key: None,
+        request_timeout: None,
     })
     .unwrap();
 

@@ -7,7 +7,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.2.5"
+version = "0.3.0"
 license = "Apache-2.0"
 repository = "https://github.com/cloudiful/cloudiful-docling-convert.git"
 
@@ -22,7 +22,6 @@ dotenvy = "0.15"
 futures = "0.3.32"
 log = "0.4.33"
 log4rs = "1.4.0"
-lopdf = "0.42.0"
 rand = "0.10.1"
 reqwest = "0.13.4"
 serde = "1.0.228"

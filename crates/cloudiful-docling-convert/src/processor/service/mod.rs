@@ -3,17 +3,18 @@ use crate::document::{
     ConvertOptions, ConvertRequest, ConvertedDocument, ConvertedFile, FileConvertRequest, InputKind,
 };
 use crate::error::{PdfConvertError, Result};
+use crate::models::TaskStatusResponse;
 use std::future::Future;
 
 mod output;
-mod pdf;
+mod remote;
 mod text;
 
 #[cfg(test)]
 mod tests;
 
 pub struct DocumentConverter {
-    docling_client: DoclingClient,
+    pub(crate) docling_client: DoclingClient,
 }
 
 impl DocumentConverter {
@@ -25,6 +26,11 @@ impl DocumentConverter {
         self.convert_with_progress(request, |_, _| async {}).await
     }
 
+    pub async fn convert_async(&self, request: ConvertRequest) -> Result<ConvertedDocument> {
+        self.convert_async_with_progress(request, |_, _| async {})
+            .await
+    }
+
     pub async fn convert_with_progress<F, Fut>(
         &self,
         request: ConvertRequest,
@@ -34,8 +40,72 @@ impl DocumentConverter {
         F: FnMut(usize, usize) -> Fut + Send,
         Fut: Future<Output = ()> + Send,
     {
-        let input_kind = request.validate()?;
+        self.convert_internal(request, false, &mut on_progress)
+            .await
+    }
 
+    pub async fn convert_async_with_progress<F, Fut>(
+        &self,
+        request: ConvertRequest,
+        mut on_progress: F,
+    ) -> Result<ConvertedDocument>
+    where
+        F: FnMut(usize, usize) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        self.convert_internal(request, true, &mut on_progress).await
+    }
+
+    pub async fn convert_async_with_docling_progress<F, Fut>(
+        &self,
+        request: ConvertRequest,
+        mut on_status: F,
+    ) -> Result<ConvertedDocument>
+    where
+        F: FnMut(TaskStatusResponse) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let input_kind = request.validate()?;
+        match (&request.options, input_kind) {
+            (ConvertOptions::Text(options), InputKind::Text) => {
+                self.convert_text(&request.input, options, &request.output_formats)
+            }
+            (ConvertOptions::Generic(options), _) if input_kind.uses_generic_convert_options() => {
+                self.convert_remote_with_docling_progress(
+                    &request.input,
+                    options,
+                    &request.output_formats,
+                    &mut on_status,
+                )
+                .await
+            }
+            (ConvertOptions::Pdf(options), InputKind::Pdf) => {
+                self.convert_remote_with_docling_progress(
+                    &request.input,
+                    options,
+                    &request.output_formats,
+                    &mut on_status,
+                )
+                .await
+            }
+            _ => Err(PdfConvertError::validation_error(
+                "request",
+                "input kind and convert options do not match",
+            )),
+        }
+    }
+
+    async fn convert_internal<F, Fut>(
+        &self,
+        request: ConvertRequest,
+        asynchronous: bool,
+        on_progress: &mut F,
+    ) -> Result<ConvertedDocument>
+    where
+        F: FnMut(usize, usize) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let input_kind = request.validate()?;
         match (&request.options, input_kind) {
             (ConvertOptions::Text(options), InputKind::Text) => {
                 let document =
@@ -44,18 +114,22 @@ impl DocumentConverter {
                 Ok(document)
             }
             (ConvertOptions::Generic(options), _) if input_kind.uses_generic_convert_options() => {
-                let document = self
-                    .convert_generic(&request.input, options, &request.output_formats)
-                    .await?;
-                on_progress(1, 1).await;
-                Ok(document)
-            }
-            (ConvertOptions::Pdf(options), InputKind::Pdf) => {
-                self.convert_pdf(
+                self.convert_remote(
                     &request.input,
                     options,
                     &request.output_formats,
-                    &mut on_progress,
+                    asynchronous,
+                    on_progress,
+                )
+                .await
+            }
+            (ConvertOptions::Pdf(options), InputKind::Pdf) => {
+                self.convert_remote(
+                    &request.input,
+                    options,
+                    &request.output_formats,
+                    asynchronous,
+                    on_progress,
                 )
                 .await
             }
@@ -80,16 +154,50 @@ impl DocumentConverter {
         F: FnMut(usize, usize) -> Fut + Send,
         Fut: Future<Output = ()> + Send,
     {
-        let document = self
-            .convert_with_progress(request.request.clone(), on_progress)
-            .await?;
-        let output_path = Self::calculate_output_path(
-            &request.output_dir,
-            &document.filename,
-            request.selected_output,
-        );
+        self.convert_to_file_internal(request, false, on_progress)
+            .await
+    }
 
-        if !request.overwrite && output_path.exists() {
+    pub async fn convert_to_file_async(
+        &self,
+        request: FileConvertRequest,
+    ) -> Result<ConvertedFile> {
+        self.convert_to_file_async_with_progress(request, |_, _| async {})
+            .await
+    }
+
+    pub async fn convert_to_file_async_with_progress<F, Fut>(
+        &self,
+        request: FileConvertRequest,
+        on_progress: F,
+    ) -> Result<ConvertedFile>
+    where
+        F: FnMut(usize, usize) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        self.convert_to_file_internal(request, true, on_progress)
+            .await
+    }
+
+    pub async fn convert_to_file_async_with_docling_progress<F, Fut>(
+        &self,
+        request: FileConvertRequest,
+        on_status: F,
+    ) -> Result<ConvertedFile>
+    where
+        F: FnMut(TaskStatusResponse) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let selected_output = request.selected_output;
+        let output_dir = request.output_dir.clone();
+        let overwrite = request.overwrite;
+        let document = self
+            .convert_async_with_docling_progress(request.request, on_status)
+            .await?;
+        let output_path =
+            Self::calculate_output_path(&output_dir, &document.filename, selected_output);
+
+        if !overwrite && output_path.exists() {
             return Err(PdfConvertError::operation_error(
                 "writing output",
                 format!(
@@ -99,8 +207,47 @@ impl DocumentConverter {
             ));
         }
 
-        Self::write_output_file(&output_path, &document, request.selected_output).await?;
+        Self::write_output_file(&output_path, &document, selected_output).await?;
+        Ok(ConvertedFile {
+            document,
+            output_paths: vec![output_path],
+        })
+    }
 
+    async fn convert_to_file_internal<F, Fut>(
+        &self,
+        request: FileConvertRequest,
+        asynchronous: bool,
+        on_progress: F,
+    ) -> Result<ConvertedFile>
+    where
+        F: FnMut(usize, usize) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let selected_output = request.selected_output;
+        let output_dir = request.output_dir.clone();
+        let overwrite = request.overwrite;
+        let document = if asynchronous {
+            self.convert_async_with_progress(request.request, on_progress)
+                .await?
+        } else {
+            self.convert_with_progress(request.request, on_progress)
+                .await?
+        };
+        let output_path =
+            Self::calculate_output_path(&output_dir, &document.filename, selected_output);
+
+        if !overwrite && output_path.exists() {
+            return Err(PdfConvertError::operation_error(
+                "writing output",
+                format!(
+                    "output already exists and overwrite is disabled: {}",
+                    output_path.display()
+                ),
+            ));
+        }
+
+        Self::write_output_file(&output_path, &document, selected_output).await?;
         Ok(ConvertedFile {
             document,
             output_paths: vec![output_path],

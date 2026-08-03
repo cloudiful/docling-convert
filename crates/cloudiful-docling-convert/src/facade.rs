@@ -140,6 +140,7 @@ mod tests {
             picture_description_model: "test-model".into(),
             code_formula_model: "test-model".into(),
             api_key: Some("key".into()),
+            ..DoclingRuntimeConfig::without_vlm("http://127.0.0.1:5001/v1")
         })
         .build()
         .unwrap();
@@ -164,6 +165,7 @@ mod tests {
             picture_description_model: "test-model".into(),
             code_formula_model: "test-model".into(),
             api_key: Some("key".into()),
+            ..DoclingRuntimeConfig::without_vlm("http://127.0.0.1:5001/v1")
         })
         .build()
         .unwrap();
@@ -185,6 +187,7 @@ mod tests {
             picture_description_model: "test-model".into(),
             code_formula_model: "test-model".into(),
             api_key: Some("key".into()),
+            ..DoclingRuntimeConfig::without_vlm("http://127.0.0.1:5001/v1")
         })
         .build()
         .unwrap();

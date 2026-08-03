@@ -1,28 +1,10 @@
-use clap::{ArgAction, Parser};
+use clap::Parser;
 use cloudiful_docling_convert::{
-    ConversionBehavior, DoclingRuntimeConfig, InputKind, OutputFormat,
+    ChunkerKind, ChunkingOptions, ConversionBehavior, DoclingRuntimeConfig, InputKind,
+    OutputFormat, PipelineKind,
 };
 use std::path::PathBuf;
-
-fn parse_positive_u32(value: &str) -> Result<u32, String> {
-    let parsed = value
-        .parse::<u32>()
-        .map_err(|_| format!("invalid integer value: {}", value))?;
-    if parsed == 0 {
-        return Err("value must be 1 or greater".to_string());
-    }
-    Ok(parsed)
-}
-
-fn parse_positive_usize(value: &str) -> Result<usize, String> {
-    let parsed = value
-        .parse::<usize>()
-        .map_err(|_| format!("invalid integer value: {}", value))?;
-    if parsed == 0 {
-        return Err("value must be 1 or greater".to_string());
-    }
-    Ok(parsed)
-}
+use std::time::Duration;
 
 fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
     value
@@ -36,20 +18,37 @@ fn parse_input_format(value: &str) -> Result<InputKind, String> {
         .map_err(|error| error.to_string())
 }
 
+fn parse_chunker(value: &str) -> Result<ChunkerKind, String> {
+    value
+        .parse::<ChunkerKind>()
+        .map_err(|error| error.to_string())
+}
+
+fn parse_pipeline(value: &str) -> Result<PipelineKind, String> {
+    value
+        .parse::<PipelineKind>()
+        .map_err(|error| error.to_string())
+}
+
+fn parse_positive_u32(value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|_| format!("invalid integer value: {value}"))?;
+    (parsed > 0)
+        .then_some(parsed)
+        .ok_or_else(|| "value must be 1 or greater".to_string())
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "cloudiful-docling-convert",
     version,
-    about = "Convert document files through the cloudiful-docling-convert library and Docling API",
-    long_about = "A CLI tool built on the cloudiful-docling-convert library. It converts PDF, Office, HTML, \
-                  AsciiDoc, spreadsheet, image, EPUB, email, Markdown, and TXT inputs into structured Markdown, \
-                  text, JSON, HTML, or DocTags output. PDF inputs keep \
-                  split/bookmark-aware processing and parallel submission through Docling."
+    about = "Convert document files through Docling Serve"
 )]
 pub struct Args {
     #[arg(
         value_name = "INPUT_PATHS",
-        help = "Paths to supported files or directories to convert (default: .)",
+        help = "Paths to supported files or directories (default: .)",
         default_values = ["."]
     )]
     pub input_files: Vec<PathBuf>,
@@ -58,27 +57,17 @@ pub struct Args {
         short = 'o',
         long,
         value_name = "OUTPUT_DIR",
-        help = "Output directory for converted files (default: .)",
+        help = "Output directory (default: .)",
         default_value = "."
     )]
     pub output_dir: PathBuf,
-
-    #[arg(
-        short = 'n',
-        long,
-        default_value_t = 5,
-        value_parser = parse_positive_u32,
-        value_name = "PAGES",
-        help = "Number of pages per split chunk (default: 5)"
-    )]
-    pub pages_per_file: u32,
 
     #[arg(
         short = 'u',
         long,
         default_value = "http://127.0.0.1:5001/v1",
         value_name = "URL",
-        help = "Docling API base URL"
+        help = "Docling Serve API base URL"
     )]
     pub docling_base_url: String,
 
@@ -88,7 +77,7 @@ pub struct Args {
         value_parser = parse_output_format,
         default_value = "md",
         value_name = "FORMAT",
-        help = "Output format: json, md, text, html, or doctags (default: md)"
+        help = "Output format: md, json, yaml, html, html_split_page, text, doctags, vtt, doclang, dclx, chunks"
     )]
     pub format: OutputFormat,
 
@@ -96,84 +85,85 @@ pub struct Args {
         long,
         value_parser = parse_input_format,
         value_name = "FORMAT",
-        help = "Explicit input format override for ambiguous files such as .xml/.json. Supports xml_uspto, xml_jats, xml_xbrl, xml_doclang, mets_gbs, json_docling, and latex"
+        help = "Explicit input format override for ambiguous or extensionless files"
     )]
     pub input_format: Option<InputKind>,
 
     #[arg(
         long,
-        action = ArgAction::Set,
-        num_args = 0..=1,
-        default_missing_value = "true",
+        value_parser = parse_chunker,
+        default_value = "none",
+        value_name = "CHUNKER",
+        help = "Native Docling chunker: none, hybrid, or hierarchical"
+    )]
+    pub chunker: ChunkerKind,
+
+    #[arg(long, help = "Serialize tables as Markdown in native chunks")]
+    pub use_markdown_tables: bool,
+
+    #[arg(long, help = "Include Markdown image references in native chunks")]
+    pub use_markdown_images: bool,
+
+    #[arg(
+        long,
+        default_value = "![IMAGE]",
+        help = "Image placeholder in native chunks"
+    )]
+    pub image_placeholder: String,
+
+    #[arg(long, help = "Include raw text alongside contextualized chunk text")]
+    pub include_raw_text: bool,
+
+    #[arg(long, value_parser = parse_positive_u32, help = "Maximum tokens per hybrid chunk")]
+    pub max_tokens: Option<u32>,
+
+    #[arg(
+        long,
+        value_name = "MODEL",
+        help = "Tokenizer model for hybrid chunking"
+    )]
+    pub tokenizer: Option<String>,
+
+    #[arg(
+        long,
         default_value_t = true,
-        help = "Split PDF input into chunks before processing (default: true)"
+        help = "Merge undersized hybrid peer chunks"
     )]
-    pub split_input: bool,
+    pub merge_peers: bool,
 
-    #[arg(
-        long,
-        default_value_t = false,
-        help = "Split PDF input based on bookmarks/outlines (default: false)"
-    )]
-    pub split_by_bookmark: bool,
+    #[arg(long, value_parser = parse_pipeline, value_name = "PIPELINE")]
+    pub pipeline: Option<PipelineKind>,
 
-    #[arg(
-        long,
-        default_value_t = false,
-        help = "Enable semantic chunking in output (default: false)"
-    )]
-    pub chunking: bool,
-
-    #[arg(
-        long,
-        value_name = "URL",
-        help = "OpenAI-compatible API base URL for optional VLM enrichment"
-    )]
+    #[arg(long, value_name = "URL", help = "OpenAI-compatible VLM API base URL")]
     pub openai_base_url: Option<String>,
 
-    #[arg(long, value_name = "MODEL", help = "Optional VLM pipeline model")]
+    #[arg(long, value_name = "MODEL")]
     pub vlm_pipeline_model: Option<String>,
 
-    #[arg(
-        long,
-        value_name = "MODEL",
-        help = "Optional VLM model for picture descriptions"
-    )]
+    #[arg(long, value_name = "MODEL")]
     pub picture_description_model: Option<String>,
 
-    #[arg(
-        long,
-        value_name = "MODEL",
-        help = "Optional VLM model for code and formula recognition"
-    )]
+    #[arg(long, value_name = "MODEL")]
     pub code_formula_model: Option<String>,
 
-    #[arg(
-        short = 'b',
-        long,
-        default_value_t = 2,
-        value_parser = parse_positive_usize,
-        value_name = "SIZE",
-        help = "Number of tasks to submit in parallel (default: 2)"
-    )]
-    pub batch_size: usize,
-
-    #[arg(
-        long,
-        default_value_t = false,
-        help = "Overwrite existing output files (default: false)"
-    )]
+    #[arg(long, help = "Overwrite existing output files")]
     pub overwrite: bool,
 }
 
 impl Args {
     pub fn behavior(&self) -> ConversionBehavior {
         ConversionBehavior {
-            pages_per_file: self.pages_per_file,
-            split_input: self.split_input,
-            split_by_bookmark: self.split_by_bookmark,
-            chunking: self.chunking,
-            batch_size: self.batch_size,
+            chunker: self.chunker,
+            chunking: ChunkingOptions {
+                use_markdown_tables: self.use_markdown_tables,
+                use_markdown_images: self.use_markdown_images,
+                image_placeholder: self.image_placeholder.clone(),
+                include_raw_text: self.include_raw_text,
+                max_tokens: self.max_tokens,
+                tokenizer: self.tokenizer.clone(),
+                merge_peers: self.merge_peers,
+            },
+            pipeline: self.pipeline,
         }
     }
 
@@ -184,7 +174,13 @@ impl Args {
             vlm_pipeline_model: self.vlm_pipeline_model.clone().unwrap_or_default(),
             picture_description_model: self.picture_description_model.clone().unwrap_or_default(),
             code_formula_model: self.code_formula_model.clone().unwrap_or_default(),
-            api_key: std::env::var("OPENAI_API_KEY").ok(),
+            api_key: std::env::var("DOCLING_API_KEY").ok(),
+            tenant_id: std::env::var("DOCLING_TENANT_ID").ok(),
+            openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+            request_timeout: std::env::var("DOCLING_HTTP_TIMEOUT_SECS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .map(Duration::from_secs),
         }
     }
 }
@@ -194,17 +190,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_typed_format_and_explicit_false_flags() {
+    fn parses_native_chunker_and_pipeline() {
         let args = Args::try_parse_from([
             "cloudiful-docling-convert",
             "--format",
-            "html",
-            "--split-input=false",
+            "chunks",
+            "--chunker",
+            "hybrid",
+            "--pipeline",
+            "asr",
         ])
-        .expect("CLI arguments should parse");
+        .unwrap();
 
-        assert_eq!(args.format, OutputFormat::Html);
-        assert!(!args.split_input);
+        assert_eq!(args.format, OutputFormat::Chunks);
+        assert_eq!(args.chunker, ChunkerKind::Hybrid);
+        assert_eq!(args.pipeline, Some(PipelineKind::Asr));
     }
 
     #[test]
@@ -215,31 +215,15 @@ mod tests {
             "xml_jats",
             "paper.xml",
         ])
-        .expect("CLI arguments should parse");
+        .unwrap();
 
         assert_eq!(args.input_format, Some(InputKind::XmlJats));
     }
 
     #[test]
-    fn rejects_zero_for_positive_numeric_arguments() {
-        let pages_err =
-            Args::try_parse_from(["cloudiful-docling-convert", "--pages-per-file", "0"])
-                .unwrap_err();
-        assert!(pages_err.to_string().contains("1 or greater"));
-
-        let batch_err =
-            Args::try_parse_from(["cloudiful-docling-convert", "--batch-size", "0"]).unwrap_err();
-        assert!(batch_err.to_string().contains("1 or greater"));
-    }
-
-    #[test]
-    fn vlm_flags_are_optional() {
-        let args = Args::try_parse_from(["cloudiful-docling-convert"]).unwrap();
-        let runtime = args.runtime_config();
-
-        assert_eq!(runtime.openai_base_url, "");
-        assert_eq!(runtime.vlm_pipeline_model, "");
-        assert_eq!(runtime.picture_description_model, "");
-        assert_eq!(runtime.code_formula_model, "");
+    fn rejects_zero_max_tokens() {
+        let error =
+            Args::try_parse_from(["cloudiful-docling-convert", "--max-tokens", "0"]).unwrap_err();
+        assert!(error.to_string().contains("1 or greater"));
     }
 }

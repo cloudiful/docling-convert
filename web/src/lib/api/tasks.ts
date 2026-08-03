@@ -23,11 +23,21 @@ export async function uploadTaskFile(
 	if (config.input_format) {
 		formData.append('input_format', config.input_format);
 	}
-	formData.append('pages_per_file', config.pages_per_file.toString());
-	formData.append('split_input', config.split_input.toString());
-	formData.append('split_by_bookmark', config.split_by_bookmark.toString());
-	formData.append('chunking', config.chunking.toString());
-	formData.append('batch_size', config.batch_size.toString());
+	formData.append('chunker', config.chunker);
+	if (config.pipeline) {
+		formData.append('pipeline', config.pipeline);
+	}
+	formData.append('use_markdown_tables', config.chunking_options.use_markdown_tables.toString());
+	formData.append('use_markdown_images', config.chunking_options.use_markdown_images.toString());
+	formData.append('image_placeholder', config.chunking_options.image_placeholder);
+	formData.append('include_raw_text', config.chunking_options.include_raw_text.toString());
+	formData.append('merge_peers', config.chunking_options.merge_peers.toString());
+	if (config.chunking_options.max_tokens !== null) {
+		formData.append('max_tokens', config.chunking_options.max_tokens.toString());
+	}
+	if (config.chunking_options.tokenizer) {
+		formData.append('tokenizer', config.chunking_options.tokenizer);
+	}
 
 	await new Promise<void>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();

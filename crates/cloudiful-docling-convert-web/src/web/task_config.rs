@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use axum::http::StatusCode;
+use cloudiful_docling_convert::{ChunkerKind, ChunkingOptions, PipelineKind};
 use serde::Deserialize;
 
 use super::state::TaskConfig;
@@ -10,11 +11,21 @@ use super::support::{parse_input_format, parse_output_format};
 pub struct TaskConfigInput {
     pub format: Option<String>,
     pub input_format: Option<String>,
-    pub pages_per_file: Option<u32>,
-    pub split_input: Option<bool>,
-    pub split_by_bookmark: Option<bool>,
+    pub chunker: Option<String>,
     pub chunking: Option<bool>,
-    pub batch_size: Option<usize>,
+    pub pipeline: Option<String>,
+    pub chunking_options: Option<ChunkingOptionsInput>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ChunkingOptionsInput {
+    pub use_markdown_tables: Option<bool>,
+    pub use_markdown_images: Option<bool>,
+    pub image_placeholder: Option<String>,
+    pub include_raw_text: Option<bool>,
+    pub max_tokens: Option<u32>,
+    pub tokenizer: Option<String>,
+    pub merge_peers: Option<bool>,
 }
 
 impl TaskConfigInput {
@@ -25,49 +36,86 @@ impl TaskConfigInput {
             parse_output_format(&format).map_err(|_| StatusCode::BAD_REQUEST)?;
             config.format = format;
         }
-
         if let Some(input_format) = self.input_format {
             parse_input_format(&input_format).map_err(|_| StatusCode::BAD_REQUEST)?;
             config.input_format = Some(input_format);
         }
 
-        if let Some(pages_per_file) = self.pages_per_file {
-            if pages_per_file == 0 {
-                return Err(StatusCode::BAD_REQUEST);
-            }
-            config.pages_per_file = pages_per_file;
-        }
+        config.chunker = match self.chunker {
+            Some(value) => value.parse().map_err(|_| StatusCode::BAD_REQUEST)?,
+            None if self.chunking == Some(true) => ChunkerKind::Hybrid,
+            None => ChunkerKind::None,
+        };
+        config.pipeline = self
+            .pipeline
+            .map(|value| value.parse::<PipelineKind>())
+            .transpose()
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-        if let Some(batch_size) = self.batch_size {
-            if batch_size == 0 {
-                return Err(StatusCode::BAD_REQUEST);
-            }
-            config.batch_size = batch_size;
+        if let Some(options) = self.chunking_options {
+            apply_chunking_options(&mut config.chunking_options, options);
         }
-
-        if let Some(split_input) = self.split_input {
-            config.split_input = split_input;
-        }
-        if let Some(split_by_bookmark) = self.split_by_bookmark {
-            config.split_by_bookmark = split_by_bookmark;
-        }
-        if let Some(chunking) = self.chunking {
-            config.chunking = chunking;
-        }
-
         Ok(config)
     }
 
     pub fn from_multipart_fields(fields: &HashMap<String, String>) -> Result<Self, StatusCode> {
+        let chunking_options = if fields.keys().any(|key| {
+            matches!(
+                key.as_str(),
+                "use_markdown_tables"
+                    | "use_markdown_images"
+                    | "image_placeholder"
+                    | "include_raw_text"
+                    | "max_tokens"
+                    | "tokenizer"
+                    | "merge_peers"
+            )
+        }) {
+            Some(ChunkingOptionsInput {
+                use_markdown_tables: parse_optional_bool(fields, "use_markdown_tables")?,
+                use_markdown_images: parse_optional_bool(fields, "use_markdown_images")?,
+                image_placeholder: fields.get("image_placeholder").cloned(),
+                include_raw_text: parse_optional_bool(fields, "include_raw_text")?,
+                max_tokens: parse_optional(fields, "max_tokens")?,
+                tokenizer: fields.get("tokenizer").cloned(),
+                merge_peers: parse_optional_bool(fields, "merge_peers")?,
+            })
+        } else {
+            None
+        };
+
         Ok(Self {
             format: fields.get("format").cloned(),
             input_format: fields.get("input_format").cloned(),
-            pages_per_file: parse_optional(fields, "pages_per_file")?,
-            split_input: parse_optional_bool(fields, "split_input")?,
-            split_by_bookmark: parse_optional_bool(fields, "split_by_bookmark")?,
+            chunker: fields.get("chunker").cloned(),
             chunking: parse_optional_bool(fields, "chunking")?,
-            batch_size: parse_optional(fields, "batch_size")?,
+            pipeline: fields.get("pipeline").cloned(),
+            chunking_options,
         })
+    }
+}
+
+fn apply_chunking_options(options: &mut ChunkingOptions, input: ChunkingOptionsInput) {
+    if let Some(value) = input.use_markdown_tables {
+        options.use_markdown_tables = value;
+    }
+    if let Some(value) = input.use_markdown_images {
+        options.use_markdown_images = value;
+    }
+    if let Some(value) = input.image_placeholder {
+        options.image_placeholder = value;
+    }
+    if let Some(value) = input.include_raw_text {
+        options.include_raw_text = value;
+    }
+    if input.max_tokens.is_some() {
+        options.max_tokens = input.max_tokens;
+    }
+    if let Some(value) = input.tokenizer {
+        options.tokenizer = Some(value);
+    }
+    if let Some(value) = input.merge_peers {
+        options.merge_peers = value;
     }
 }
 
@@ -103,34 +151,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_defaults_when_empty() {
-        let config = TaskConfigInput::default().resolve().unwrap();
-        assert_eq!(config, TaskConfig::default());
+    fn resolves_native_chunker_and_pipeline() {
+        let config = TaskConfigInput {
+            format: Some("chunks".into()),
+            chunker: Some("hybrid".into()),
+            pipeline: Some("asr".into()),
+            ..TaskConfigInput::default()
+        }
+        .resolve()
+        .unwrap();
+
+        assert_eq!(config.chunker, ChunkerKind::Hybrid);
+        assert_eq!(config.pipeline, Some(PipelineKind::Asr));
     }
 
     #[test]
-    fn parses_multipart_values() {
-        let fields = HashMap::from([
-            ("format".to_string(), "json".to_string()),
-            ("input_format".to_string(), "xml_jats".to_string()),
-            ("pages_per_file".to_string(), "9".to_string()),
-            ("split_input".to_string(), "false".to_string()),
-            ("split_by_bookmark".to_string(), "true".to_string()),
-            ("chunking".to_string(), "true".to_string()),
-            ("batch_size".to_string(), "4".to_string()),
-        ]);
+    fn maps_legacy_chunking_true_to_hybrid() {
+        let config = TaskConfigInput {
+            chunking: Some(true),
+            ..TaskConfigInput::default()
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(config.chunker, ChunkerKind::Hybrid);
+    }
 
+    #[test]
+    fn multipart_parses_chunk_options_without_old_split_fields() {
+        let fields = HashMap::from([
+            ("format".to_string(), "chunks".to_string()),
+            ("chunker".to_string(), "hierarchical".to_string()),
+            ("include_raw_text".to_string(), "true".to_string()),
+        ]);
         let config = TaskConfigInput::from_multipart_fields(&fields)
             .unwrap()
             .resolve()
             .unwrap();
-
-        assert_eq!(config.format, "json");
-        assert_eq!(config.input_format.as_deref(), Some("xml_jats"));
-        assert_eq!(config.pages_per_file, 9);
-        assert!(!config.split_input);
-        assert!(config.split_by_bookmark);
-        assert!(config.chunking);
-        assert_eq!(config.batch_size, 4);
+        assert_eq!(config.chunker, ChunkerKind::Hierarchical);
+        assert!(config.chunking_options.include_raw_text);
     }
 }

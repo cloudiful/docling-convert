@@ -132,15 +132,6 @@ impl From<serde_json::Error> for PdfConvertError {
     }
 }
 
-impl From<lopdf::Error> for PdfConvertError {
-    fn from(err: lopdf::Error) -> Self {
-        PdfConvertError::ParseError {
-            target: "PDF".to_string(),
-            message: err.to_string(),
-        }
-    }
-}
-
 impl From<std::env::VarError> for PdfConvertError {
     fn from(err: std::env::VarError) -> Self {
         match err {

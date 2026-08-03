@@ -1,15 +1,17 @@
 use axum::{
     Router,
-    body::{Body, Bytes, to_bytes},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     response::Response,
-    routing::get,
 };
-use futures::stream;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tempfile::tempdir;
-use tokio::sync::oneshot;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+use tokio::time::{Duration, timeout};
 use tower::ServiceExt;
 
 use super::conversion::process_url_conversion;
@@ -24,12 +26,110 @@ async fn response_json(response: Response) -> Value {
 
 fn create_test_state() -> AppState {
     AppState::new(
-        "http://localhost:5001/v1".to_string(),
+        "http://127.0.0.1:1/v1".to_string(),
         "http://localhost:8080/v1".to_string(),
         "gpt-4o".to_string(),
         "gpt-4o-mini".to_string(),
         "gpt-4o-mini".to_string(),
     )
+}
+
+struct MockDoclingSourceServer {
+    base_url: String,
+    requests: Arc<Mutex<Vec<Vec<u8>>>>,
+    task: JoinHandle<()>,
+}
+
+impl MockDoclingSourceServer {
+    async fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let captured_requests = Arc::clone(&requests);
+        let responses = [
+            json!({"task_id": "url-task"}),
+            json!({
+                "task_id": "url-task",
+                "task_type": "convert",
+                "task_status": "success",
+                "task_meta": {"num_docs": 1, "num_processed": 1}
+            }),
+            json!({
+                "document": {"filename": "notes.md", "text_content": "hello"},
+                "status": "success",
+                "processing_time": 0.01,
+                "errors": []
+            }),
+        ];
+
+        let task = tokio::spawn(async move {
+            for response in responses {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                let request = timeout(Duration::from_secs(5), read_http_request(&mut stream))
+                    .await
+                    .unwrap_or_else(|_| Ok(Vec::new()))
+                    .unwrap_or_default();
+                captured_requests.lock().await.push(request);
+                let body = serde_json::to_vec(&response).unwrap();
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(headers.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+            }
+        });
+
+        Self {
+            base_url: format!("http://{address}/v1"),
+            requests,
+            task,
+        }
+    }
+
+    async fn requests(&self) -> Vec<Vec<u8>> {
+        self.requests.lock().await.clone()
+    }
+}
+
+impl Drop for MockDoclingSourceServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        let count = stream.read(&mut buffer).await?;
+        if count == 0 {
+            return Ok(request);
+        }
+        request.extend_from_slice(&buffer[..count]);
+        if let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+            let header_end = header_end + 4;
+            let content_length = String::from_utf8_lossy(&request[..header_end])
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or_default();
+            while request.len() < header_end + content_length {
+                let count = stream.read(&mut buffer).await?;
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..count]);
+            }
+            return Ok(request);
+        }
+    }
 }
 
 fn create_multipart_request(
@@ -76,51 +176,6 @@ fn create_multipart_request(
         .unwrap()
 }
 
-async fn spawn_download_server(
-    path: &'static str,
-    status: StatusCode,
-    content_type: &'static str,
-    content_length: Option<usize>,
-    body: Vec<u8>,
-) -> (String, oneshot::Sender<()>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let body = Arc::new(body);
-
-    let app = Router::new().route(
-        path,
-        get({
-            let body = Arc::clone(&body);
-            move || {
-                let body = Arc::clone(&body);
-                async move {
-                    let mut response = Response::builder().status(status);
-                    response = response.header("Content-Type", content_type);
-                    if let Some(content_length) = content_length {
-                        response = response.header("Content-Length", content_length.to_string());
-                    }
-                    let stream_body = stream::iter(vec![Ok::<Bytes, std::io::Error>(Bytes::from(
-                        body.as_ref().clone(),
-                    ))]);
-                    response.body(Body::from_stream(stream_body)).unwrap()
-                }
-            }
-        }),
-    );
-
-    tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
-            })
-            .await
-            .unwrap();
-    });
-
-    (format!("http://{}{}", addr, path), shutdown_tx)
-}
-
 #[tokio::test]
 async fn test_upload_valid_pdf() {
     let state = create_test_state();
@@ -138,7 +193,7 @@ async fn test_upload_valid_pdf() {
     assert_eq!(json["filename"], "test.pdf");
     assert_eq!(json["message"], "File uploaded successfully");
     assert!(!json["task_id"].as_str().unwrap_or_default().is_empty());
-    assert_eq!(task.total_chunks, 1);
+    assert_eq!(task.total_chunks, 0);
 }
 
 #[tokio::test]
@@ -155,11 +210,11 @@ async fn test_upload_accepts_markdown() {
     let task_id = json["task_id"].as_str().unwrap();
     let task = task_state.get_task(task_id).await.unwrap();
     assert_eq!(task.filename, "notes.md");
-    assert_eq!(task.total_chunks, 1);
+    assert_eq!(task.total_chunks, 0);
 }
 
 #[tokio::test]
-async fn test_upload_real_pdf_sets_chunk_total() {
+async fn test_upload_does_not_preparse_pdf_chunks() {
     let state = create_test_state();
     let task_state = state.clone();
     let app: Router = create_router(state);
@@ -172,7 +227,7 @@ async fn test_upload_real_pdf_sets_chunk_total() {
     let json = response_json(response).await;
     let task_id = json["task_id"].as_str().unwrap();
     let task = task_state.get_task(task_id).await.unwrap();
-    assert!(task.total_chunks > 0);
+    assert_eq!(task.total_chunks, 0);
 }
 
 #[tokio::test]
@@ -268,11 +323,9 @@ async fn test_upload_applies_custom_task_config() {
         pdf_content,
         &[
             ("format", "json"),
-            ("pages_per_file", "9"),
-            ("split_input", "false"),
-            ("split_by_bookmark", "true"),
             ("chunking", "true"),
-            ("batch_size", "4"),
+            ("pipeline", "standard"),
+            ("include_raw_text", "true"),
         ],
     );
     let response = app.oneshot(request).await.unwrap();
@@ -283,11 +336,15 @@ async fn test_upload_applies_custom_task_config() {
     let task = task_state.get_task(task_id).await.unwrap();
 
     assert_eq!(task.config.format, "json");
-    assert_eq!(task.config.pages_per_file, 9);
-    assert!(!task.config.split_input);
-    assert!(task.config.split_by_bookmark);
-    assert!(task.config.chunking);
-    assert_eq!(task.config.batch_size, 4);
+    assert_eq!(
+        task.config.chunker,
+        cloudiful_docling_convert::ChunkerKind::Hybrid
+    );
+    assert!(task.config.chunking_options.include_raw_text);
+    assert_eq!(
+        task.config.pipeline,
+        Some(cloudiful_docling_convert::PipelineKind::Standard)
+    );
 }
 
 #[tokio::test]
@@ -577,59 +634,27 @@ async fn test_download_returns_not_found_after_delete() {
 }
 
 #[tokio::test]
-async fn test_process_url_conversion_rejects_oversized_download() {
-    let oversized_body = vec![b'a'; 100 * 1024 * 1024 + 1];
-    let (url, shutdown) = spawn_download_server(
-        "/large.txt",
-        StatusCode::OK,
-        "text/plain",
-        Some(oversized_body.len()),
-        oversized_body,
-    )
-    .await;
-
-    let state = create_test_state();
-    let task_id = state
-        .create_task("large.txt".to_string(), TaskConfig::default(), 0)
-        .await;
-    let error = process_url_conversion(
-        state,
-        task_id,
-        url,
-        "large.txt".to_string(),
-        TaskConfig::default(),
-    )
-    .await
-    .unwrap_err();
-
-    let _ = shutdown.send(());
-    assert!(error.to_string().contains("100 MB limit"));
-}
-
-#[tokio::test]
-async fn test_process_url_conversion_updates_non_pdf_chunks() {
-    let (url, shutdown) = spawn_download_server(
-        "/notes.txt",
-        StatusCode::OK,
-        "text/plain",
-        Some(5),
-        b"hello".to_vec(),
-    )
-    .await;
-
-    let state = create_test_state();
+async fn test_process_url_conversion_forwards_source_without_fetching() {
+    let docling = MockDoclingSourceServer::start().await;
+    let state = AppState::new(
+        docling.base_url.clone(),
+        "http://127.0.0.1:8080/v1".to_string(),
+        "gpt-4o".to_string(),
+        "gpt-4o-mini".to_string(),
+        "gpt-4o-mini".to_string(),
+    );
     let config = TaskConfig {
         format: "text".to_string(),
         ..TaskConfig::default()
     };
     let task_id = state
-        .create_task("notes.txt".to_string(), config.clone(), 0)
+        .create_task("notes.md".to_string(), config.clone(), 0)
         .await;
     process_url_conversion(
         state.clone(),
         task_id.clone(),
-        url,
-        "notes".to_string(),
+        "http://127.0.0.1:9/notes.md".to_string(),
+        "notes.md".to_string(),
         config,
     )
     .await
@@ -637,7 +662,7 @@ async fn test_process_url_conversion_updates_non_pdf_chunks() {
 
     let task = state.get_task(&task_id).await.unwrap();
     assert_eq!(task.status, TaskStatus::Completed);
-    assert_eq!(task.filename, "notes.txt");
+    assert_eq!(task.filename, "notes.md");
     assert_eq!(task.total_chunks, 1);
     assert_eq!(task.completed_chunks, 1);
     assert!(task.output_url.is_some());
@@ -646,6 +671,17 @@ async fn test_process_url_conversion_updates_non_pdf_chunks() {
     let output = tokio::fs::read_to_string(&output_path).await.unwrap();
     assert_eq!(output, "hello");
 
+    let requests = docling.requests().await;
+    assert_eq!(requests.len(), 3);
+    let source_request = String::from_utf8_lossy(&requests[0]);
+    assert!(source_request.starts_with("POST /v1/convert/source/async HTTP/1.1"));
+    let source_body = source_request.split_once("\r\n\r\n").unwrap().1;
+    let source_body: Value = serde_json::from_str(source_body).unwrap();
+    assert_eq!(
+        source_body["sources"][0]["url"],
+        "http://127.0.0.1:9/notes.md"
+    );
+    assert_eq!(source_body["target"]["kind"], "inbody");
+
     let _ = state.delete_task(&task_id).await;
-    let _ = shutdown.send(());
 }
