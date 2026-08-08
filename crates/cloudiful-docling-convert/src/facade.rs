@@ -120,6 +120,34 @@ impl PdfConvert {
         })
     }
 
+    /// Poll a remote task by its id. Uses Docling's long-polling endpoint.
+    pub async fn poll_remote(&self, task_id: &str) -> Result<TaskStatusResponse> {
+        self.converter
+            .docling_client
+            .poll_task_status(task_id)
+            .await
+    }
+
+    /// Fetch and parse a completed remote task by its id. The task must have
+    /// reached a terminal status; poll with [`Self::poll_remote`] first.
+    pub async fn fetch_remote(
+        &self,
+        input: InputDocument,
+        task_id: &str,
+    ) -> Result<ConvertedDocument> {
+        let status = self
+            .converter
+            .docling_client
+            .poll_task_status(task_id)
+            .await?;
+        let task_result = self
+            .converter
+            .docling_client
+            .fetch_task_result(task_id, &status)
+            .await?;
+        DocumentConverter::document_from_task_result(&input, task_result)
+    }
+
     pub async fn convert_bytes(
         &self,
         filename: impl Into<String>,
