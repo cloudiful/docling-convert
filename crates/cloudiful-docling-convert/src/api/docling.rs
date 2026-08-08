@@ -76,6 +76,7 @@ impl DoclingConvertRequest {
 #[derive(Clone)]
 pub struct DoclingClient {
     transport: Transport,
+    result_body_limit: Option<usize>,
 }
 
 impl std::fmt::Debug for DoclingClient {
@@ -91,6 +92,23 @@ impl DoclingClient {
     pub fn new(config: DoclingConfig) -> Result<Self> {
         Ok(Self {
             transport: Transport::new(config)?,
+            result_body_limit: None,
+        })
+    }
+
+    pub fn new_with_result_body_limit(
+        config: DoclingConfig,
+        result_body_limit: usize,
+    ) -> Result<Self> {
+        if result_body_limit == 0 {
+            return Err(PdfConvertError::validation_error(
+                "result_body_limit",
+                "value must be greater than 0",
+            ));
+        }
+        Ok(Self {
+            transport: Transport::new(config)?,
+            result_body_limit: Some(result_body_limit),
         })
     }
 
@@ -123,7 +141,7 @@ impl DoclingClient {
                 .send()
                 .await
                 .map_err(PdfConvertError::from)?;
-            parse_response(response, "Docling file conversion").await
+            parse_response(response, "Docling file conversion", self.result_body_limit).await
         };
 
         retry_with_backoff(operation, "docling_convert_file").await
@@ -182,7 +200,12 @@ impl DoclingClient {
                 .send()
                 .await
                 .map_err(PdfConvertError::from)?;
-            parse_response(response, "Docling source conversion").await
+            parse_response(
+                response,
+                "Docling source conversion",
+                self.result_body_limit,
+            )
+            .await
         };
 
         retry_with_backoff(operation, "docling_convert_source").await
@@ -322,7 +345,7 @@ impl DoclingClient {
                 request = request.header(reqwest::header::CONNECTION, "close");
             }
             let response = request.send().await.map_err(PdfConvertError::from)?;
-            parse_response(response, "Fetching task result").await
+            parse_response(response, "Fetching task result", self.result_body_limit).await
         };
 
         retry_with_backoff(operation, &format!("get_task_result({task_id})")).await

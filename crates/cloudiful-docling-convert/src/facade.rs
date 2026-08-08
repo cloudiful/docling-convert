@@ -12,6 +12,7 @@ pub struct ConverterBuilder {
     config: DoclingRuntimeConfig,
     behavior: ConversionBehavior,
     output_formats: Vec<OutputFormat>,
+    result_body_limit: Option<usize>,
 }
 
 impl ConverterBuilder {
@@ -20,6 +21,7 @@ impl ConverterBuilder {
             config,
             behavior: ConversionBehavior::default(),
             output_formats: vec![OutputFormat::Md],
+            result_body_limit: None,
         }
     }
 
@@ -33,6 +35,11 @@ impl ConverterBuilder {
         self
     }
 
+    pub fn result_body_limit(mut self, result_body_limit: usize) -> Self {
+        self.result_body_limit = Some(result_body_limit);
+        self
+    }
+
     pub fn build(self) -> Result<PdfConvert> {
         let output_formats = if self.output_formats.is_empty() {
             vec![OutputFormat::Md]
@@ -40,8 +47,15 @@ impl ConverterBuilder {
             self.output_formats
         };
 
+        let client = match self.result_body_limit {
+            Some(limit) => crate::DoclingClient::new_with_result_body_limit(
+                self.config.into_docling_config(),
+                limit,
+            )?,
+            None => build_docling_client(self.config)?,
+        };
         Ok(PdfConvert {
-            converter: DocumentConverter::new(build_docling_client(self.config)?),
+            converter: DocumentConverter::new(client),
             behavior: self.behavior,
             output_formats,
         })
@@ -83,6 +97,12 @@ impl PdfConvert {
 
     pub async fn convert_input(&self, input: InputDocument) -> Result<ConvertedDocument> {
         self.converter.convert(self.request_for_input(input)?).await
+    }
+
+    pub async fn convert_input_async(&self, input: InputDocument) -> Result<ConvertedDocument> {
+        self.converter
+            .convert_async(self.request_for_input(input)?)
+            .await
     }
 
     pub async fn convert_bytes(
@@ -200,5 +220,53 @@ mod tests {
             .unwrap();
 
         assert_eq!(request.input.kind().unwrap(), InputKind::XmlJats);
+    }
+
+    #[test]
+    fn builder_result_body_limit_zero_fails_build() {
+        let error = match ConverterBuilder::new(DoclingRuntimeConfig {
+            docling_base_url: "http://127.0.0.1:5001/v1".into(),
+            openai_base_url: "https://example.com/v1".into(),
+            vlm_pipeline_model: "test-model".into(),
+            picture_description_model: "test-model".into(),
+            code_formula_model: "test-model".into(),
+            api_key: Some("key".into()),
+            ..DoclingRuntimeConfig::without_vlm("http://127.0.0.1:5001/v1")
+        })
+        .result_body_limit(0)
+        .build()
+        {
+            Ok(_) => panic!("build should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("result_body_limit"));
+        assert!(error.to_string().contains("greater than 0"));
+    }
+
+    #[test]
+    fn builder_result_body_limit_builds_with_default_outputs() {
+        let converter = ConverterBuilder::new(DoclingRuntimeConfig {
+            docling_base_url: "http://127.0.0.1:5001/v1".into(),
+            openai_base_url: "https://example.com/v1".into(),
+            vlm_pipeline_model: "test-model".into(),
+            picture_description_model: "test-model".into(),
+            code_formula_model: "test-model".into(),
+            api_key: Some("key".into()),
+            ..DoclingRuntimeConfig::without_vlm("http://127.0.0.1:5001/v1")
+        })
+        .result_body_limit(1024)
+        .build()
+        .unwrap();
+
+        let request = converter
+            .request_for_input(InputDocument::new(
+                "notes.md",
+                "text/markdown",
+                Bytes::from("# hi"),
+            ))
+            .unwrap();
+
+        assert_eq!(request.output_formats, vec![OutputFormat::Md]);
     }
 }

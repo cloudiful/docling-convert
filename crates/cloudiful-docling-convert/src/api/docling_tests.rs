@@ -11,6 +11,7 @@ use tokio::time::{Duration, timeout};
 use super::*;
 use crate::document::{ChunkerKind, ChunkingOptions, InputDocument, InputKind, OutputFormat};
 use crate::models::ConversionStatus;
+use crate::{DoclingRuntimeConfig, PdfConvert};
 
 struct MockResponse {
     status: u16,
@@ -374,4 +375,130 @@ fn build_form_skips_page_range_for_generic_requests() {
     let debug = format!("{form:?}");
     assert!(!debug.contains("page_range"));
     assert!(debug.contains("from_formats"));
+}
+
+#[test]
+fn new_with_result_body_limit_rejects_zero() {
+    let error = DoclingClient::new_with_result_body_limit(
+        DoclingConfig::without_vlm("http://localhost:5001/v1"),
+        0,
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("result_body_limit"));
+    assert!(error.to_string().contains("greater than 0"));
+}
+
+#[tokio::test]
+async fn result_body_limit_rejects_oversized_result() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": "ok"
+    }))])
+    .await;
+
+    let client =
+        DoclingClient::new_with_result_body_limit(DoclingConfig::without_vlm(&server.base_url), 16)
+            .unwrap();
+
+    let error = client
+        .convert_file(&input(), &request())
+        .await
+        .expect_err("oversized result should be rejected");
+
+    assert!(error.to_string().contains("exceeds maximum of 16 bytes"));
+}
+
+#[tokio::test]
+async fn facade_convert_input_async_submits_native_async_task() {
+    let server = MockDoclingServer::start(vec![
+        MockResponse::json(json!({"task_id": "task-1"})),
+        MockResponse::json(json!({
+            "task_id": "task-1",
+            "task_type": "convert",
+            "task_status": "partial_success",
+            "task_meta": {
+                "num_docs": 2,
+                "num_processed": 2,
+                "num_succeeded": 1,
+                "num_partially_succeeded": 1,
+                "num_failed": 0
+            },
+            "error_message": "one document had errors"
+        })),
+        MockResponse::json(json!({
+            "document": {"filename": "notes.md", "md_content": "# hello"},
+            "status": "partial_success",
+            "processing_time": 0.1,
+            "errors": []
+        })),
+    ])
+    .await;
+
+    let converter = PdfConvert::builder(DoclingRuntimeConfig::without_vlm(&server.base_url))
+        .build()
+        .unwrap();
+    let document = converter
+        .convert_input_async(InputDocument::new(
+            "notes.pdf",
+            "application/pdf",
+            Bytes::from_static(b"%PDF-1.4"),
+        ))
+        .await
+        .unwrap();
+
+    assert!(document.markdown.is_some());
+
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 3);
+    assert!(
+        String::from_utf8_lossy(&requests[0]).starts_with("POST /v1/convert/file/async HTTP/1.1")
+    );
+    assert!(
+        String::from_utf8_lossy(&requests[1])
+            .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
+    );
+    assert!(String::from_utf8_lossy(&requests[2]).starts_with("GET /v1/result/task-1 HTTP/1.1"));
+}
+
+#[tokio::test]
+async fn facade_convert_input_async_applies_result_body_limit() {
+    let server = MockDoclingServer::start(vec![
+        MockResponse::json(json!({"task_id": "task-1"})),
+        MockResponse::json(json!({
+            "task_id": "task-1",
+            "task_type": "convert",
+            "task_status": "partial_success",
+            "task_meta": {
+                "num_docs": 2,
+                "num_processed": 2,
+                "num_succeeded": 1,
+                "num_partially_succeeded": 1,
+                "num_failed": 0
+            },
+            "error_message": "one document had errors"
+        })),
+        MockResponse::json(json!({
+            "document": {"filename": "notes.md", "md_content": "# hello"},
+            "status": "partial_success",
+            "processing_time": 0.1,
+            "errors": []
+        })),
+    ])
+    .await;
+
+    let converter = PdfConvert::builder(DoclingRuntimeConfig::without_vlm(&server.base_url))
+        .result_body_limit(32)
+        .build()
+        .unwrap();
+
+    let error = converter
+        .convert_input_async(InputDocument::new(
+            "notes.pdf",
+            "application/pdf",
+            Bytes::from_static(b"%PDF-1.4"),
+        ))
+        .await
+        .expect_err("oversized async result should be rejected");
+
+    assert!(error.to_string().contains("exceeds maximum of 32 bytes"));
 }

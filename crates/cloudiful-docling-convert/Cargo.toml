@@ -11,7 +11,7 @@ publish = ["crates-io"]
 bytes.workspace = true
 futures.workspace = true
 log.workspace = true
-reqwest = { workspace = true, features = ["json", "multipart"] }
+reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = [ "full" ] }

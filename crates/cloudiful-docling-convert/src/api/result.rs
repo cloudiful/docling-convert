@@ -1,4 +1,5 @@
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
+use futures::{Stream, StreamExt};
 use reqwest::Response;
 use serde_json::Value;
 
@@ -69,15 +70,71 @@ impl DoclingResult {
     }
 }
 
-pub(crate) async fn parse_response(response: Response, context: &str) -> Result<DoclingResult> {
+pub(crate) async fn parse_response(
+    response: Response,
+    context: &str,
+    body_limit: Option<usize>,
+) -> Result<DoclingResult> {
     let response = handle_response(response, context).await?;
     let is_zip = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.to_ascii_lowercase().contains("application/zip"));
-    let bytes = response.bytes().await.map_err(PdfConvertError::from)?;
+    let content_length = response.content_length();
+    let bytes = read_body(response.bytes_stream(), content_length, body_limit, context).await?;
     parse_bytes(bytes, is_zip)
+}
+
+async fn read_body<S>(
+    mut stream: S,
+    content_length: Option<u64>,
+    body_limit: Option<usize>,
+    context: &str,
+) -> Result<Bytes>
+where
+    S: Stream<Item = std::result::Result<Bytes, reqwest::Error>> + Unpin,
+{
+    if let Some(limit) = body_limit
+        && content_length.is_some_and(|length| length > limit as u64)
+    {
+        return Err(result_too_large(context, limit, content_length));
+    }
+
+    let capacity = body_limit
+        .zip(content_length)
+        .and_then(|(limit, length)| {
+            usize::try_from(length)
+                .ok()
+                .filter(|length| *length <= limit)
+        })
+        .unwrap_or_default();
+    let mut body = BytesMut::with_capacity(capacity);
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(PdfConvertError::from)?;
+        let next_length = body.len().saturating_add(chunk.len());
+        if let Some(limit) = body_limit
+            && next_length > limit
+        {
+            return Err(result_too_large(
+                context,
+                limit,
+                u64::try_from(next_length).ok(),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body.freeze())
+}
+
+fn result_too_large(context: &str, limit: usize, actual: Option<u64>) -> PdfConvertError {
+    let actual = actual
+        .map(|length| format!("; response is at least {length} bytes"))
+        .unwrap_or_default();
+    PdfConvertError::operation_error(
+        format!("reading {context} response"),
+        format!("result body exceeds maximum of {limit} bytes{actual}"),
+    )
 }
 
 pub(crate) fn parse_bytes(bytes: Bytes, is_zip: bool) -> Result<DoclingResult> {
@@ -161,4 +218,45 @@ fn collect_json_errors(value: &Value) -> Vec<String> {
         }));
     }
     errors
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::stream;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn limited_reader_accepts_exact_limit() {
+        let chunks = stream::iter([Ok::<_, reqwest::Error>(Bytes::from_static(b"1234"))]);
+
+        let body = read_body(chunks, None, Some(4), "test").await.unwrap();
+
+        assert_eq!(body, Bytes::from_static(b"1234"));
+    }
+
+    #[tokio::test]
+    async fn limited_reader_rejects_chunked_body_over_limit() {
+        let chunks = stream::iter([
+            Ok::<_, reqwest::Error>(Bytes::from_static(b"1234")),
+            Ok::<_, reqwest::Error>(Bytes::from_static(b"5")),
+        ]);
+
+        let error = read_body(chunks, None, Some(4), "test")
+            .await
+            .expect_err("oversized body should fail");
+
+        assert!(error.to_string().contains("exceeds maximum of 4 bytes"));
+    }
+
+    #[tokio::test]
+    async fn limited_reader_rejects_known_length_before_reading() {
+        let chunks = stream::empty::<std::result::Result<Bytes, reqwest::Error>>();
+
+        let error = read_body(chunks, Some(5), Some(4), "test")
+            .await
+            .expect_err("oversized content length should fail");
+
+        assert!(error.to_string().contains("response is at least 5 bytes"));
+    }
 }
