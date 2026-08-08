@@ -608,6 +608,12 @@ async fn poll_and_fetch_remote_by_task_id_without_submit() {
             "task_meta": {"num_docs": 1, "num_processed": 1, "num_succeeded": 1}
         })),
         MockResponse::json(json!({
+            "task_id": "task-1",
+            "task_type": "convert",
+            "task_status": "success",
+            "task_meta": {"num_docs": 1, "num_processed": 1, "num_succeeded": 1}
+        })),
+        MockResponse::json(json!({
             "document": {"filename": "notes.md", "md_content": "# hello"},
             "status": "success",
             "processing_time": 0.1,
@@ -627,10 +633,14 @@ async fn poll_and_fetch_remote_by_task_id_without_submit() {
     assert_eq!(document.filename, "notes.md");
 
     let requests = server.requests().await;
-    assert_eq!(requests.len(), 2);
+    assert_eq!(requests.len(), 3);
     assert!(
         String::from_utf8_lossy(&requests[0])
             .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
     );
-    assert!(String::from_utf8_lossy(&requests[1]).starts_with("GET /v1/result/task-1 HTTP/1.1"));
+    assert!(
+        String::from_utf8_lossy(&requests[1])
+            .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
+    );
+    assert!(String::from_utf8_lossy(&requests[2]).starts_with("GET /v1/result/task-1 HTTP/1.1"));
 }
