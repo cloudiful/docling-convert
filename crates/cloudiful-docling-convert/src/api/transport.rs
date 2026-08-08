@@ -67,6 +67,15 @@ pub fn default_request_timeout() -> Duration {
     Duration::from_secs(seconds)
 }
 
+pub fn default_task_timeout() -> Duration {
+    let seconds = std::env::var("DOCLING_TASK_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(3600)
+        .max(1);
+    Duration::from_secs(seconds)
+}
+
 pub async fn handle_response(response: Response, context: &str) -> Result<Response> {
     let status = response.status();
     if status.is_success() {

@@ -13,6 +13,7 @@ mod text;
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone)]
 pub struct DocumentConverter {
     pub(crate) docling_client: DoclingClient,
 }
@@ -20,6 +21,38 @@ pub struct DocumentConverter {
 impl DocumentConverter {
     pub fn new(docling_client: DoclingClient) -> Self {
         Self { docling_client }
+    }
+
+    /// Submit a whole-document asynchronous conversion and return only the remote
+    /// task id. The caller owns polling and result fetching, which makes the
+    /// conversion resumable across restarts.
+    pub async fn submit_async(&self, request: &ConvertRequest) -> Result<String> {
+        let input_kind = request.validate()?;
+        let options = match &request.options {
+            ConvertOptions::Pdf(options) | ConvertOptions::Generic(options) => options,
+            ConvertOptions::Text(_) => {
+                return Err(PdfConvertError::validation_error(
+                    "request",
+                    "text inputs are converted locally and cannot be submitted to Docling",
+                ));
+            }
+        };
+        if matches!(input_kind, InputKind::Text) {
+            return Err(PdfConvertError::validation_error(
+                "request",
+                "text inputs are converted locally and cannot be submitted to Docling",
+            ));
+        }
+        let remote_request = crate::api::DoclingConvertRequest {
+            output_formats: request.output_formats.clone(),
+            page_range: None,
+            chunker: options.chunker,
+            chunking: options.chunking.clone(),
+            pipeline: options.pipeline,
+        };
+        self.docling_client
+            .submit_file_async(&request.input, &remote_request)
+            .await
     }
 
     pub async fn convert(&self, request: ConvertRequest) -> Result<ConvertedDocument> {

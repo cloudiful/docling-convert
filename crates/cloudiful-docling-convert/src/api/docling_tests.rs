@@ -502,3 +502,98 @@ async fn facade_convert_input_async_applies_result_body_limit() {
 
     assert!(error.to_string().contains("exceeds maximum of 32 bytes"));
 }
+
+#[tokio::test]
+async fn resumable_handle_submits_polls_and_fetches() {
+    let server = MockDoclingServer::start(vec![
+        MockResponse::json(json!({"task_id": "task-1"})),
+        MockResponse::json(json!({
+            "task_id": "task-1",
+            "task_type": "convert",
+            "task_status": "pending"
+        })),
+        MockResponse::json(json!({
+            "task_id": "task-1",
+            "task_type": "convert",
+            "task_status": "success",
+            "task_meta": {"num_docs": 1, "num_processed": 1, "num_succeeded": 1}
+        })),
+        MockResponse::json(json!({
+            "document": {"filename": "notes.md", "md_content": "# hello"},
+            "status": "success",
+            "processing_time": 0.1,
+            "errors": []
+        })),
+    ])
+    .await;
+
+    let converter = PdfConvert::builder(DoclingRuntimeConfig::without_vlm(&server.base_url))
+        .output_formats(vec![OutputFormat::Md])
+        .build()
+        .unwrap();
+
+    let handle = converter
+        .submit_async(InputDocument::new(
+            "notes.pdf",
+            "application/pdf",
+            Bytes::from_static(b"%PDF-1.4"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(handle.task_id(), "task-1");
+
+    let status = handle.poll_status().await.unwrap();
+    assert_eq!(status.task_status, ConversionStatus::Pending);
+    assert!(!status.task_status.is_terminal());
+
+    let document = handle.fetch_result().await.unwrap();
+    assert_eq!(document.filename, "notes.md");
+    assert!(document.errors.is_empty());
+
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 4);
+    assert!(
+        String::from_utf8_lossy(&requests[0]).starts_with("POST /v1/convert/file/async HTTP/1.1")
+    );
+    assert!(
+        String::from_utf8_lossy(&requests[1])
+            .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
+    );
+    assert!(
+        String::from_utf8_lossy(&requests[2])
+            .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
+    );
+    assert!(String::from_utf8_lossy(&requests[3]).starts_with("GET /v1/result/task-1 HTTP/1.1"));
+}
+
+#[tokio::test]
+async fn resumable_handle_fetch_failure_surfaces_docling_error() {
+    let server = MockDoclingServer::start(vec![
+        MockResponse::json(json!({"task_id": "failed-task"})),
+        MockResponse::json(json!({
+            "task_id": "failed-task",
+            "task_type": "convert",
+            "task_status": "failure",
+            "error_message": "Internal processing error"
+        })),
+    ])
+    .await;
+
+    let converter = PdfConvert::builder(DoclingRuntimeConfig::without_vlm(&server.base_url))
+        .build()
+        .unwrap();
+    let handle = converter
+        .submit_async(InputDocument::new(
+            "notes.pdf",
+            "application/pdf",
+            Bytes::from_static(b"%PDF-1.4"),
+        ))
+        .await
+        .unwrap();
+
+    let error = handle
+        .fetch_result()
+        .await
+        .expect_err("failure should error");
+    assert!(error.to_string().contains("Internal processing error"));
+}

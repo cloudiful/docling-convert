@@ -10,7 +10,9 @@ use crate::models::{ConversionStatus, TaskPostResponse, TaskStatusResponse};
 use super::chunk::{build_convert_file_form, build_file_form};
 use super::result::{DoclingResult, DoclingTaskResult, parse_response};
 use super::source::{chunk_source_request, source_request};
-use super::transport::{Transport, default_request_timeout, handle_response, retry_with_backoff};
+use super::transport::{
+    Transport, default_request_timeout, default_task_timeout, handle_response, retry_with_backoff,
+};
 
 #[derive(Debug, Clone)]
 pub struct DoclingConfig {
@@ -23,6 +25,7 @@ pub struct DoclingConfig {
     pub openai_api_key: Option<String>,
     pub tenant_id: Option<String>,
     pub request_timeout: Option<Duration>,
+    pub task_timeout: Option<Duration>,
 }
 
 impl DoclingConfig {
@@ -37,6 +40,7 @@ impl DoclingConfig {
             openai_api_key: None,
             tenant_id: None,
             request_timeout: None,
+            task_timeout: None,
         }
     }
 }
@@ -120,6 +124,12 @@ impl DoclingClient {
         self.config()
             .request_timeout
             .unwrap_or_else(default_request_timeout)
+    }
+
+    pub fn task_timeout(&self) -> Duration {
+        self.config()
+            .task_timeout
+            .unwrap_or_else(default_task_timeout)
     }
 
     pub async fn convert_file(
@@ -262,7 +272,7 @@ impl DoclingClient {
         F: FnMut(TaskStatusResponse) -> Fut + Send,
         Fut: std::future::Future<Output = ()> + Send,
     {
-        let deadline = Instant::now() + self.request_timeout();
+        let deadline = Instant::now() + self.task_timeout();
         loop {
             let status = self.poll_task_status(task_id).await?;
             on_status(status.clone()).await;
@@ -286,11 +296,42 @@ impl DoclingClient {
                     "waiting for Docling task",
                     format!(
                         "task {task_id} did not reach a terminal state within {:?}",
-                        self.request_timeout()
+                        self.task_timeout()
                     ),
                 ));
             }
         }
+    }
+
+    /// Build a [`DoclingTaskResult`] for a task whose terminal status was already
+    /// observed via [`Self::poll_task_status`]. This is the resumable counterpart of
+    /// [`Self::wait_for_result`]: the caller controls polling cadence and deadline.
+    pub async fn fetch_task_result(
+        &self,
+        task_id: &str,
+        status: &TaskStatusResponse,
+    ) -> Result<DoclingTaskResult> {
+        if matches!(
+            status.task_status,
+            ConversionStatus::Failure | ConversionStatus::Skipped
+        ) {
+            return Err(task_failure_error(status));
+        }
+        if !status.task_status.is_terminal() {
+            return Err(PdfConvertError::operation_error(
+                "fetching Docling task result",
+                format!(
+                    "task {task_id} is not terminal yet: {:?}",
+                    status.task_status
+                ),
+            ));
+        }
+        let result = self.get_task_result(task_id).await?;
+        Ok(DoclingTaskResult {
+            status: status.task_status,
+            result,
+            errors: task_status_errors(status),
+        })
     }
 
     pub async fn poll_task_status(&self, task_id: &str) -> Result<TaskStatusResponse> {

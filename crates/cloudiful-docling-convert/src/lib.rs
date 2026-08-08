@@ -19,7 +19,7 @@ pub use document::{
     TextConvertOptions, supported_input_kind,
 };
 pub use error::{PdfConvertError, Result};
-pub use facade::{ConverterBuilder, PdfConvert};
+pub use facade::{ConverterBuilder, DoclingTaskHandle, PdfConvert};
 pub use models::{
     ChunkDocumentResponse, ConversionStatus, ConvertDocumentResponse, DoclingChunk,
     DoclingErrorItem, DocumentResultItem, ExportDocumentResponse, PublicFailureInfo,

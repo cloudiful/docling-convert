@@ -6,6 +6,7 @@ use crate::conversion::{
 };
 use crate::document::{ConvertRequest, ConvertedDocument, InputDocument, InputKind, OutputFormat};
 use crate::error::{PdfConvertError, Result};
+use crate::models::TaskStatusResponse;
 use crate::processor::DocumentConverter;
 
 pub struct ConverterBuilder {
@@ -105,6 +106,20 @@ impl PdfConvert {
             .await
     }
 
+    /// Submit a whole-document asynchronous conversion and return a resumable
+    /// [`DoclingTaskHandle`]. Unlike [`Self::convert_input_async`], the remote
+    /// task id is returned to the caller so polling can be paused and resumed,
+    /// even across process restarts.
+    pub async fn submit_async(&self, input: InputDocument) -> Result<DoclingTaskHandle> {
+        let request = self.request_for_input(input)?;
+        let task_id = self.converter.submit_async(&request).await?;
+        Ok(DoclingTaskHandle {
+            converter: self.converter.clone(),
+            input: request.input,
+            task_id,
+        })
+    }
+
     pub async fn convert_bytes(
         &self,
         filename: impl Into<String>,
@@ -144,6 +159,50 @@ impl PdfConvert {
             .with_input_kind(input_kind),
         )
         .await
+    }
+}
+
+/// A resumable handle to a whole-document asynchronous Docling conversion.
+///
+/// The caller controls the polling cadence and deadline; the underlying remote
+/// task keeps running in Docling while this handle is idle, so the handle can
+/// be serialized by its [`task_id`](Self::task_id) and resumed after a restart
+/// by submitting a new handle for the same remote task through the client API.
+#[derive(Clone)]
+pub struct DoclingTaskHandle {
+    converter: DocumentConverter,
+    input: InputDocument,
+    task_id: String,
+}
+
+impl DoclingTaskHandle {
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    /// Poll the remote task status. Uses Docling's long-polling endpoint, which
+    /// blocks server-side for a bounded period before returning the status.
+    pub async fn poll_status(&self) -> Result<TaskStatusResponse> {
+        self.converter
+            .docling_client
+            .poll_task_status(&self.task_id)
+            .await
+    }
+
+    /// Fetch and parse the completed remote result. Requires the task to have
+    /// reached a terminal status; call [`Self::poll_status`] first.
+    pub async fn fetch_result(&self) -> Result<ConvertedDocument> {
+        let status = self
+            .converter
+            .docling_client
+            .poll_task_status(&self.task_id)
+            .await?;
+        let task_result = self
+            .converter
+            .docling_client
+            .fetch_task_result(&self.task_id, &status)
+            .await?;
+        DocumentConverter::document_from_task_result(&self.input, task_result)
     }
 }
 

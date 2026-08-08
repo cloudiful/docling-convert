@@ -18,6 +18,7 @@ pub struct DoclingRuntimeConfig {
     pub tenant_id: Option<String>,
     pub openai_api_key: Option<String>,
     pub request_timeout: Option<Duration>,
+    pub task_timeout: Option<Duration>,
 }
 
 impl DoclingRuntimeConfig {
@@ -32,6 +33,7 @@ impl DoclingRuntimeConfig {
             tenant_id: None,
             openai_api_key: None,
             request_timeout: None,
+            task_timeout: None,
         }
     }
 
@@ -41,6 +43,10 @@ impl DoclingRuntimeConfig {
         config.tenant_id = std::env::var("DOCLING_TENANT_ID").ok();
         config.openai_api_key = std::env::var("OPENAI_API_KEY").ok();
         config.request_timeout = std::env::var("DOCLING_HTTP_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_secs);
+        config.task_timeout = std::env::var("DOCLING_TASK_TIMEOUT_SECS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
             .map(Duration::from_secs);
@@ -64,6 +70,7 @@ impl DoclingRuntimeConfig {
                 .tenant_id
                 .or_else(|| std::env::var("DOCLING_TENANT_ID").ok()),
             request_timeout: self.request_timeout,
+            task_timeout: self.task_timeout,
         }
     }
 }

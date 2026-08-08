@@ -181,6 +181,10 @@ impl Args {
                 .ok()
                 .and_then(|value| value.parse::<u64>().ok())
                 .map(Duration::from_secs),
+            task_timeout: std::env::var("DOCLING_TASK_TIMEOUT_SECS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .map(Duration::from_secs),
         }
     }
 }

@@ -168,7 +168,7 @@ impl DocumentConverter {
         }
     }
 
-    pub(super) fn document_from_task_result(
+    pub(crate) fn document_from_task_result(
         input: &InputDocument,
         task_result: crate::api::DoclingTaskResult,
     ) -> Result<crate::document::ConvertedDocument> {

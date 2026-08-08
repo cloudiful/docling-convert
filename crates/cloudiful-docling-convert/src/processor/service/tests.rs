@@ -22,6 +22,7 @@ fn test_converter() -> DocumentConverter {
         tenant_id: None,
         openai_api_key: None,
         request_timeout: None,
+        task_timeout: None,
     })
     .unwrap();
 
