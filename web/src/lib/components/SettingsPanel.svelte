@@ -148,6 +148,26 @@
 					<option value="asr">{$t.settings.pipelineAsr}</option>
 				</select>
 			</div>
+
+			<div class="md:col-span-2">
+				<label
+					for="picture-description-preset"
+					class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+				>
+					{$t.settings.pictureDescriptionPreset}
+				</label>
+				<input
+					id="picture-description-preset"
+					type="text"
+					value={config.picture_description_preset ?? ''}
+					oninput={(event) =>
+						onPatch({
+							picture_description_preset:
+								(event.currentTarget as HTMLInputElement).value || null
+						})}
+					class="form-input w-full rounded-lg border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+				/>
+			</div>
 		</div>
 
 		{#if config.chunker !== 'none'}

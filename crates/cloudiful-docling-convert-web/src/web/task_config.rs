@@ -15,6 +15,7 @@ pub struct TaskConfigInput {
     pub chunking: Option<bool>,
     pub pipeline: Option<String>,
     pub chunking_options: Option<ChunkingOptionsInput>,
+    pub picture_description_preset: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -51,6 +52,12 @@ impl TaskConfigInput {
             .map(|value| value.parse::<PipelineKind>())
             .transpose()
             .map_err(|_| StatusCode::BAD_REQUEST)?;
+        config.picture_description_preset = self
+            .picture_description_preset
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
 
         if let Some(options) = self.chunking_options {
             apply_chunking_options(&mut config.chunking_options, options);
@@ -91,6 +98,7 @@ impl TaskConfigInput {
             chunking: parse_optional_bool(fields, "chunking")?,
             pipeline: fields.get("pipeline").cloned(),
             chunking_options,
+            picture_description_preset: fields.get("picture_description_preset").cloned(),
         })
     }
 }
@@ -189,5 +197,46 @@ mod tests {
             .unwrap();
         assert_eq!(config.chunker, ChunkerKind::Hierarchical);
         assert!(config.chunking_options.include_raw_text);
+    }
+
+    #[test]
+    fn resolves_picture_description_preset_from_json_input() {
+        let config = TaskConfigInput {
+            picture_description_preset: Some("smolvlm".to_string()),
+            ..TaskConfigInput::default()
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(
+            config.picture_description_preset.as_deref(),
+            Some("smolvlm")
+        );
+    }
+
+    #[test]
+    fn empty_picture_description_preset_resolves_to_none() {
+        let config = TaskConfigInput {
+            picture_description_preset: Some("   ".to_string()),
+            ..TaskConfigInput::default()
+        }
+        .resolve()
+        .unwrap();
+        assert!(config.picture_description_preset.is_none());
+    }
+
+    #[test]
+    fn multipart_parses_picture_description_preset() {
+        let fields = HashMap::from([(
+            "picture_description_preset".to_string(),
+            "granite_vision".to_string(),
+        )]);
+        let config = TaskConfigInput::from_multipart_fields(&fields)
+            .unwrap()
+            .resolve()
+            .unwrap();
+        assert_eq!(
+            config.picture_description_preset.as_deref(),
+            Some("granite_vision")
+        );
     }
 }

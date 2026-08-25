@@ -143,6 +143,13 @@ pub struct Args {
     #[arg(long, value_name = "MODEL")]
     pub picture_description_model: Option<String>,
 
+    #[arg(
+        long,
+        value_name = "PRESET",
+        help = "Docling Serve picture description preset (e.g., smolvlm, granite_vision)"
+    )]
+    pub picture_description_preset: Option<String>,
+
     #[arg(long, value_name = "MODEL")]
     pub code_formula_model: Option<String>,
 
@@ -164,7 +171,12 @@ impl Args {
                 merge_peers: self.merge_peers,
             },
             pipeline: self.pipeline,
-            picture_description_preset: None,
+            picture_description_preset: self
+                .picture_description_preset
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
         }
     }
 
@@ -230,5 +242,32 @@ mod tests {
         let error =
             Args::try_parse_from(["cloudiful-docling-convert", "--max-tokens", "0"]).unwrap_err();
         assert!(error.to_string().contains("1 or greater"));
+    }
+
+    #[test]
+    fn parses_picture_description_preset_into_behavior() {
+        let args = Args::try_parse_from([
+            "cloudiful-docling-convert",
+            "--picture-description-preset",
+            "smolvlm",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            args.behavior().picture_description_preset.as_deref(),
+            Some("smolvlm")
+        );
+    }
+
+    #[test]
+    fn trims_blank_picture_description_preset_into_behavior() {
+        let args = Args::try_parse_from([
+            "cloudiful-docling-convert",
+            "--picture-description-preset",
+            "   ",
+        ])
+        .unwrap();
+
+        assert!(args.behavior().picture_description_preset.is_none());
     }
 }

@@ -348,6 +348,80 @@ async fn test_upload_applies_custom_task_config() {
 }
 
 #[tokio::test]
+async fn test_upload_persists_picture_description_preset() {
+    let state = create_test_state();
+    let task_state = state.clone();
+    let app: Router = create_router(state);
+
+    let pdf_content = b"%PDF-1.4\n1 0 obj\nendobj\ntrailer\nstartxref\n0\n%%EOF";
+    let request = create_multipart_request(
+        "preset.pdf",
+        "application/pdf",
+        pdf_content,
+        &[("picture_description_preset", "smolvlm")],
+    );
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert_eq!(
+        task.config.picture_description_preset.as_deref(),
+        Some("smolvlm")
+    );
+}
+
+#[tokio::test]
+async fn test_upload_blank_picture_description_preset_keeps_default_unset() {
+    let state = create_test_state();
+    let task_state = state.clone();
+    let app: Router = create_router(state);
+
+    let pdf_content = b"%PDF-1.4\n1 0 obj\nendobj\ntrailer\nstartxref\n0\n%%EOF";
+    let request = create_multipart_request(
+        "preset-blank.pdf",
+        "application/pdf",
+        pdf_content,
+        &[("picture_description_preset", "   ")],
+    );
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert!(task.config.picture_description_preset.is_none());
+}
+
+#[tokio::test]
+async fn test_submit_url_persists_picture_description_preset() {
+    let state = create_test_state();
+    let task_state = state.clone();
+    let app: Router = create_router(state);
+
+    let request = Request::builder()
+        .uri("/api/convert/url")
+        .method("POST")
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            r#"{"url":"https://example.com/notes.pdf","config":{"picture_description_preset":"granite_vision"}}"#,
+        ))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response_json(response).await;
+    let task_id = json["task_id"].as_str().unwrap();
+    let task = task_state.get_task(task_id).await.unwrap();
+    assert_eq!(
+        task.config.picture_description_preset.as_deref(),
+        Some("granite_vision")
+    );
+}
+
+#[tokio::test]
 async fn test_list_tasks() {
     let state = create_test_state();
     state
@@ -682,6 +756,86 @@ async fn test_process_url_conversion_forwards_source_without_fetching() {
         "http://127.0.0.1:9/notes.md"
     );
     assert_eq!(source_body["target"]["kind"], "inbody");
+
+    let _ = state.delete_task(&task_id).await;
+}
+
+#[tokio::test]
+async fn test_process_url_conversion_forwards_picture_description_preset() {
+    let docling = MockDoclingSourceServer::start().await;
+    let state = AppState::new(
+        docling.base_url.clone(),
+        "http://127.0.0.1:8080/v1".to_string(),
+        "gpt-4o".to_string(),
+        "gpt-4o-mini".to_string(),
+        "gpt-4o-mini".to_string(),
+    );
+    let config = TaskConfig {
+        format: "text".to_string(),
+        picture_description_preset: Some("smolvlm".to_string()),
+        ..TaskConfig::default()
+    };
+    let task_id = state
+        .create_task("notes.md".to_string(), config.clone(), 0)
+        .await;
+    process_url_conversion(
+        state.clone(),
+        task_id.clone(),
+        "http://127.0.0.1:9/notes.md".to_string(),
+        "notes.md".to_string(),
+        config,
+    )
+    .await
+    .unwrap();
+
+    let requests = docling.requests().await;
+    let source_request = String::from_utf8_lossy(&requests[0]);
+    let source_body = source_request.split_once("\r\n\r\n").unwrap().1;
+    let source_body: Value = serde_json::from_str(source_body).unwrap();
+    assert_eq!(
+        source_body["options"]["picture_description_preset"],
+        "smolvlm"
+    );
+
+    let _ = state.delete_task(&task_id).await;
+}
+
+#[tokio::test]
+async fn test_process_url_conversion_omits_picture_description_preset_when_unset() {
+    let docling = MockDoclingSourceServer::start().await;
+    let state = AppState::new(
+        docling.base_url.clone(),
+        "http://127.0.0.1:8080/v1".to_string(),
+        "gpt-4o".to_string(),
+        "gpt-4o-mini".to_string(),
+        "gpt-4o-mini".to_string(),
+    );
+    let config = TaskConfig {
+        format: "text".to_string(),
+        ..TaskConfig::default()
+    };
+    let task_id = state
+        .create_task("notes.md".to_string(), config.clone(), 0)
+        .await;
+    process_url_conversion(
+        state.clone(),
+        task_id.clone(),
+        "http://127.0.0.1:9/notes.md".to_string(),
+        "notes.md".to_string(),
+        config,
+    )
+    .await
+    .unwrap();
+
+    let requests = docling.requests().await;
+    let source_request = String::from_utf8_lossy(&requests[0]);
+    let source_body = source_request.split_once("\r\n\r\n").unwrap().1;
+    let source_body: Value = serde_json::from_str(source_body).unwrap();
+    assert!(
+        source_body["options"]
+            .get("picture_description_preset")
+            .is_none()
+    );
 
     let _ = state.delete_task(&task_id).await;
 }

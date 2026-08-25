@@ -38,6 +38,9 @@ export async function uploadTaskFile(
 	if (config.chunking_options.tokenizer) {
 		formData.append('tokenizer', config.chunking_options.tokenizer);
 	}
+	if (config.picture_description_preset) {
+		formData.append('picture_description_preset', config.picture_description_preset);
+	}
 
 	await new Promise<void>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();

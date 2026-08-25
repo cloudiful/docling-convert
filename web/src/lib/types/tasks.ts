@@ -18,6 +18,7 @@ export interface TaskConfig {
 	chunker: ChunkerKind;
 	chunking_options: ChunkingOptions;
 	pipeline?: PipelineKind | null;
+	picture_description_preset?: string | null;
 }
 
 export interface Task {
@@ -48,5 +49,6 @@ export const defaultTaskConfig: TaskConfig = {
 		tokenizer: 'sentence-transformers/all-MiniLM-L6-v2',
 		merge_peers: true
 	},
-	pipeline: null
+	pipeline: null,
+	picture_description_preset: null
 };

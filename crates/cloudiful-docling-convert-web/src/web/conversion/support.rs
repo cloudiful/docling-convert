@@ -11,7 +11,7 @@ pub fn behavior_from_task_config(config: &TaskConfig) -> ConversionBehavior {
         chunker: config.chunker,
         chunking: config.chunking_options.clone(),
         pipeline: config.pipeline,
-        picture_description_preset: None,
+        picture_description_preset: config.picture_description_preset.clone(),
     }
 }
 

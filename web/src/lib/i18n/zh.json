@@ -59,7 +59,8 @@
     "includeRawText": "包含原始文本",
     "maxTokens": "最大 Token 数",
     "tokenizer": "Tokenizer",
-    "mergePeers": "合并相邻分块"
+    "mergePeers": "合并相邻分块",
+    "pictureDescriptionPreset": "图片描述预设"
   },
   "tasks": {
     "title": "转换任务",

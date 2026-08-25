@@ -39,6 +39,10 @@ pub struct TaskConfig {
     pub chunker: ChunkerKind,
     pub chunking_options: ChunkingOptions,
     pub pipeline: Option<PipelineKind>,
+    /// Docling Serve picture description preset (e.g., `smolvlm`, `granite_vision`).
+    /// When unset, the legacy custom VLM bundle is preserved unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture_description_preset: Option<String>,
 }
 
 impl Default for TaskConfig {
@@ -49,6 +53,7 @@ impl Default for TaskConfig {
             chunker: ChunkerKind::None,
             chunking_options: ChunkingOptions::hybrid_defaults(),
             pipeline: None,
+            picture_description_preset: None,
         }
     }
 }

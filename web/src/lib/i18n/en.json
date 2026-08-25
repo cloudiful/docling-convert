@@ -59,7 +59,8 @@
     "includeRawText": "Include raw text",
     "maxTokens": "Maximum tokens",
     "tokenizer": "Tokenizer",
-    "mergePeers": "Merge peer chunks"
+    "mergePeers": "Merge peer chunks",
+    "pictureDescriptionPreset": "Picture description preset"
   },
   "tasks": {
     "title": "Conversion Tasks",
