@@ -59,6 +59,7 @@ impl DocumentConverter {
             chunker: options.chunker,
             chunking: options.chunking.clone(),
             pipeline: options.pipeline,
+            picture_description_preset: options.picture_description_preset.clone(),
         };
         let task_id = self
             .docling_client
@@ -104,6 +105,7 @@ impl DocumentConverter {
             chunker: options.chunker,
             chunking: options.chunking.clone(),
             pipeline: options.pipeline,
+            picture_description_preset: options.picture_description_preset.clone(),
         };
         let task_id = self
             .docling_client
@@ -134,6 +136,7 @@ impl DocumentConverter {
             chunker: options.chunker,
             chunking: options.chunking.clone(),
             pipeline: options.pipeline,
+            picture_description_preset: options.picture_description_preset.clone(),
         };
 
         let result = if asynchronous {

@@ -52,6 +52,12 @@ pub struct DoclingConvertRequest {
     pub chunker: ChunkerKind,
     pub chunking: ChunkingOptions,
     pub pipeline: Option<PipelineKind>,
+    /// Preset ID for picture description, forwarded to Docling Serve as
+    /// `picture_description_preset`. When set, the legacy
+    /// `picture_description_custom_config` form field is suppressed so the
+    /// preset wins. When `None`, the legacy custom VLM configuration is
+    /// preserved unchanged.
+    pub picture_description_preset: Option<String>,
 }
 
 impl DoclingConvertRequest {
@@ -62,6 +68,7 @@ impl DoclingConvertRequest {
             chunker: ChunkerKind::None,
             chunking: ChunkingOptions::hybrid_defaults(),
             pipeline: None,
+            picture_description_preset: None,
         }
     }
 
@@ -73,6 +80,14 @@ impl DoclingConvertRequest {
 
     pub fn with_pipeline(mut self, pipeline: Option<PipelineKind>) -> Self {
         self.pipeline = pipeline;
+        self
+    }
+
+    pub fn with_picture_description_preset(
+        mut self,
+        picture_description_preset: Option<String>,
+    ) -> Self {
+        self.picture_description_preset = picture_description_preset;
         self
     }
 }

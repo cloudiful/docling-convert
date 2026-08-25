@@ -33,11 +33,18 @@ pub(crate) fn build_convert_file_form(
     if let Some(pipeline) = request.pipeline {
         form = form.text("pipeline", pipeline.to_string());
     }
+    if let Some(preset) = request.picture_description_preset.as_deref() {
+        form = form.text("picture_description_preset", preset.to_string());
+    }
 
     if input_kind.supports_vlm()
         && let Some(vlm_config) = client.config().resolved_vlm_config()?
     {
-        form = client.apply_vlm_config(form, &vlm_config)?;
+        form = client.apply_vlm_config(
+            form,
+            &vlm_config,
+            request.picture_description_preset.as_deref(),
+        )?;
     }
 
     Ok(form)
@@ -74,6 +81,9 @@ pub(crate) fn build_file_form(
     }
     if let Some(pipeline) = request.pipeline {
         form = form.text("convert_pipeline", pipeline.to_string());
+    }
+    if let Some(preset) = request.picture_description_preset.as_deref() {
+        form = form.text("convert_picture_description_preset", preset.to_string());
     }
 
     let options = &request.chunking;

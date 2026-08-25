@@ -49,6 +49,7 @@ impl DocumentConverter {
             chunker: options.chunker,
             chunking: options.chunking.clone(),
             pipeline: options.pipeline,
+            picture_description_preset: options.picture_description_preset.clone(),
         };
         self.docling_client
             .submit_file_async(&request.input, &remote_request)

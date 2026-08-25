@@ -44,6 +44,11 @@ pub(crate) struct ConvertDocumentsOptions {
     pub pipeline: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_range: Option<[u64; 2]>,
+    /// Preset ID for picture description. When set, Docling Serve uses the
+    /// admin-defined preset and ignores any `picture_description_custom_config`
+    /// the legacy VLM bundle may emit on the multipart convert endpoint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture_description_preset: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -99,6 +104,7 @@ pub(crate) fn convert_options(
         page_range: request
             .page_range
             .map(|(start, end)| [start as u64, end as u64]),
+        picture_description_preset: request.picture_description_preset.clone(),
     }
 }
 

@@ -164,6 +164,7 @@ impl Args {
                 merge_peers: self.merge_peers,
             },
             pipeline: self.pipeline,
+            picture_description_preset: None,
         }
     }
 

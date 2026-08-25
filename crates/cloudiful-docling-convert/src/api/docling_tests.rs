@@ -231,6 +231,7 @@ async fn hybrid_chunk_request_uses_native_multipart_fields() {
             merge_peers: false,
         },
         pipeline: None,
+        picture_description_preset: None,
     };
 
     authenticated_client(&server.base_url)
@@ -643,4 +644,360 @@ async fn poll_and_fetch_remote_by_task_id_without_submit() {
             .starts_with("GET /v1/status/poll/task-1?wait=30 HTTP/1.1")
     );
     assert!(String::from_utf8_lossy(&requests[2]).starts_with("GET /v1/result/task-1 HTTP/1.1"));
+}
+
+fn vlm_client_with_bundle(base_url: &str) -> DoclingClient {
+    let mut config = DoclingConfig::without_vlm(base_url);
+    config.openai_base_url = "https://api.example.com/v1".into();
+    config.vlm_pipeline_model = "vlm-model".into();
+    config.picture_description_model = "pic-model".into();
+    config.code_formula_model = "code-model".into();
+    config.openai_api_key = Some("sk-test".into());
+    DoclingClient::new(config).unwrap()
+}
+
+#[tokio::test]
+async fn convert_file_sends_picture_description_preset_in_multipart() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": {"filename": "notes.md", "md_content": "# hello"},
+        "status": "success",
+        "processing_time": 0.1,
+        "errors": []
+    }))])
+    .await;
+    let mut request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
+    request.picture_description_preset = Some("granite_vision".to_string());
+
+    client(&server.base_url)
+        .convert_file(&input(), &request)
+        .await
+        .unwrap();
+
+    let captured = server.requests().await;
+    let body = multipart_body(&captured[0]);
+    assert!(
+        String::from_utf8_lossy(&captured[0]).starts_with("POST /v1/convert/file HTTP/1.1"),
+        "expected convert/file request, got: {}",
+        String::from_utf8_lossy(&captured[0])
+            .split_once("\r\n")
+            .map(|(head, _)| head)
+            .unwrap_or_default()
+    );
+    assert!(
+        body.contains("name=\"picture_description_preset\"\r\n\r\ngranite_vision"),
+        "expected picture_description_preset multipart field in body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn convert_file_omits_picture_description_preset_when_unset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": {"filename": "notes.md", "md_content": "# hello"},
+        "status": "success",
+        "processing_time": 0.1,
+        "errors": []
+    }))])
+    .await;
+
+    client(&server.base_url)
+        .convert_file(&input(), &request())
+        .await
+        .unwrap();
+
+    let captured = server.requests().await;
+    let body = multipart_body(&captured[0]);
+    assert!(
+        !body.contains("picture_description_preset"),
+        "preset field should not be sent when unset, got body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn preset_overrides_legacy_picture_custom_vlm_config_in_multipart() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": {"filename": "notes.md", "md_content": "# hello"},
+        "status": "success",
+        "processing_time": 0.1,
+        "errors": []
+    }))])
+    .await;
+    let client = vlm_client_with_bundle(&server.base_url);
+    let pdf_input = InputDocument::new(
+        "notes.pdf",
+        "application/pdf",
+        Bytes::from_static(b"%PDF-1.4"),
+    );
+    let mut request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
+    request.picture_description_preset = Some("smolvlm".to_string());
+
+    client.convert_file(&pdf_input, &request).await.unwrap();
+
+    let captured = server.requests().await;
+    let body = multipart_body(&captured[0]);
+    assert!(
+        body.contains("name=\"picture_description_preset\"\r\n\r\nsmolvlm"),
+        "preset must be sent when explicitly set, body: {body}"
+    );
+    assert!(
+        !body.contains("picture_description_custom_config"),
+        "picture_description_custom_config must be suppressed when preset is set, body: {body}"
+    );
+    // Other custom VLM configs should still be emitted; the preset only suppresses
+    // the picture_description_custom_config form field.
+    assert!(
+        body.contains("vlm_pipeline_custom_config"),
+        "vlm_pipeline_custom_config should remain when preset is set, body: {body}"
+    );
+    assert!(
+        body.contains("code_formula_custom_config"),
+        "code_formula_custom_config should remain when preset is set, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn legacy_picture_custom_vlm_config_remains_when_preset_unset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": {"filename": "notes.md", "md_content": "# hello"},
+        "status": "success",
+        "processing_time": 0.1,
+        "errors": []
+    }))])
+    .await;
+    let client = vlm_client_with_bundle(&server.base_url);
+    let pdf_input = InputDocument::new(
+        "notes.pdf",
+        "application/pdf",
+        Bytes::from_static(b"%PDF-1.4"),
+    );
+
+    client.convert_file(&pdf_input, &request()).await.unwrap();
+
+    let captured = server.requests().await;
+    let body = multipart_body(&captured[0]);
+    assert!(
+        body.contains("picture_description_custom_config"),
+        "legacy picture_description_custom_config must remain when no preset is set, body: {body}"
+    );
+    assert!(
+        !body.contains("name=\"picture_description_preset\""),
+        "preset field should not be sent when unset, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn hybrid_chunk_file_sends_convert_picture_description_preset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "chunks": [],
+        "documents": [],
+        "processing_time": 0.01
+    }))])
+    .await;
+    let request = DoclingConvertRequest {
+        output_formats: vec![OutputFormat::Chunks],
+        page_range: None,
+        chunker: ChunkerKind::Hybrid,
+        chunking: ChunkingOptions::hybrid_defaults(),
+        pipeline: None,
+        picture_description_preset: Some("granite_vision".to_string()),
+    };
+
+    authenticated_client(&server.base_url)
+        .convert_file(&input(), &request)
+        .await
+        .unwrap();
+
+    let captured = server.requests().await;
+    let request_line = String::from_utf8_lossy(&captured[0])
+        .split_once("\r\n")
+        .map(|(head, _)| head.to_string())
+        .unwrap_or_default();
+    assert!(
+        request_line.starts_with("POST /v1/chunk/hybrid/file HTTP/1.1"),
+        "expected chunk/hybrid/file route, got {request_line}"
+    );
+    let body = multipart_body(&captured[0]);
+    assert!(
+        body.contains("name=\"convert_picture_description_preset\"\r\n\r\ngranite_vision"),
+        "chunk file form should carry convert_picture_description_preset, body: {body}"
+    );
+    assert!(
+        !body.contains("name=\"picture_description_preset\""),
+        "chunk file form should not use the bare picture_description_preset name, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn hierarchical_chunk_file_sends_convert_picture_description_preset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "chunks": [],
+        "documents": [],
+        "processing_time": 0.01
+    }))])
+    .await;
+    let request = DoclingConvertRequest {
+        output_formats: vec![OutputFormat::Chunks],
+        page_range: None,
+        chunker: ChunkerKind::Hierarchical,
+        chunking: ChunkingOptions::hierarchical_defaults(),
+        pipeline: None,
+        picture_description_preset: Some("default".to_string()),
+    };
+
+    authenticated_client(&server.base_url)
+        .convert_file(&input(), &request)
+        .await
+        .unwrap();
+
+    let captured = server.requests().await;
+    let request_line = String::from_utf8_lossy(&captured[0])
+        .split_once("\r\n")
+        .map(|(head, _)| head.to_string())
+        .unwrap_or_default();
+    assert!(
+        request_line.starts_with("POST /v1/chunk/hierarchical/file HTTP/1.1"),
+        "expected chunk/hierarchical/file route, got {request_line}"
+    );
+    let body = multipart_body(&captured[0]);
+    assert!(
+        body.contains("name=\"convert_picture_description_preset\"\r\n\r\ndefault"),
+        "hierarchical chunk file form should carry convert_picture_description_preset, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn chunk_file_omits_convert_picture_description_preset_when_unset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "chunks": [],
+        "documents": [],
+        "processing_time": 0.01
+    }))])
+    .await;
+    let request = DoclingConvertRequest {
+        output_formats: vec![OutputFormat::Chunks],
+        page_range: None,
+        chunker: ChunkerKind::Hybrid,
+        chunking: ChunkingOptions::hybrid_defaults(),
+        pipeline: None,
+        picture_description_preset: None,
+    };
+
+    authenticated_client(&server.base_url)
+        .convert_file(&input(), &request)
+        .await
+        .unwrap();
+
+    let captured = server.requests().await;
+    let body = multipart_body(&captured[0]);
+    assert!(
+        !body.contains("picture_description_preset"),
+        "chunk file form must not carry preset field when unset, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn source_json_request_sends_picture_description_preset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": "ok"
+    }))])
+    .await;
+    let mut request = DoclingConvertRequest::for_outputs(vec![OutputFormat::Md]);
+    request.picture_description_preset = Some("granite_vision".to_string());
+
+    authenticated_client(&server.base_url)
+        .convert_source("https://example.com/report.pdf", InputKind::Pdf, &request)
+        .await
+        .unwrap();
+
+    let request_bytes = server.requests().await;
+    let request_text = String::from_utf8_lossy(&request_bytes[0]).into_owned();
+    assert!(request_text.starts_with("POST /v1/convert/source HTTP/1.1"));
+    let body: Value = serde_json::from_str(request_text.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(
+        body["options"]["picture_description_preset"], "granite_vision",
+        "source JSON must carry picture_description_preset in options"
+    );
+}
+
+#[tokio::test]
+async fn source_json_request_omits_picture_description_preset_when_unset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "document": "ok"
+    }))])
+    .await;
+
+    authenticated_client(&server.base_url)
+        .convert_source("https://example.com/report.pdf", InputKind::Pdf, &request())
+        .await
+        .unwrap();
+
+    let request_bytes = server.requests().await;
+    let request_text = String::from_utf8_lossy(&request_bytes[0]).into_owned();
+    let body: Value = serde_json::from_str(request_text.split_once("\r\n\r\n").unwrap().1).unwrap();
+    let options = &body["options"];
+    assert!(
+        options.get("picture_description_preset").is_none(),
+        "picture_description_preset must be omitted from source JSON when unset, got: {options}"
+    );
+}
+
+#[tokio::test]
+async fn chunk_source_json_request_sends_picture_description_preset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "chunks": [],
+        "documents": [],
+        "processing_time": 0.01
+    }))])
+    .await;
+    let request = DoclingConvertRequest {
+        output_formats: vec![OutputFormat::Chunks],
+        page_range: None,
+        chunker: ChunkerKind::Hybrid,
+        chunking: ChunkingOptions::hybrid_defaults(),
+        pipeline: None,
+        picture_description_preset: Some("smolvlm".to_string()),
+    };
+
+    authenticated_client(&server.base_url)
+        .convert_source("https://example.com/report.pdf", InputKind::Pdf, &request)
+        .await
+        .unwrap();
+
+    let captured = String::from_utf8_lossy(&server.requests().await[0]).to_string();
+    assert!(captured.starts_with("POST /v1/chunk/hybrid/source HTTP/1.1"));
+    let body: Value = serde_json::from_str(captured.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(
+        body["convert_options"]["picture_description_preset"], "smolvlm",
+        "chunk source JSON must carry picture_description_preset in convert_options"
+    );
+}
+
+#[tokio::test]
+async fn chunk_source_json_request_omits_picture_description_preset_when_unset() {
+    let server = MockDoclingServer::start(vec![MockResponse::json(json!({
+        "chunks": [],
+        "documents": [],
+        "processing_time": 0.01
+    }))])
+    .await;
+    let request = DoclingConvertRequest {
+        output_formats: vec![OutputFormat::Chunks],
+        page_range: None,
+        chunker: ChunkerKind::Hybrid,
+        chunking: ChunkingOptions::hybrid_defaults(),
+        pipeline: None,
+        picture_description_preset: None,
+    };
+
+    authenticated_client(&server.base_url)
+        .convert_source("https://example.com/report.pdf", InputKind::Pdf, &request)
+        .await
+        .unwrap();
+
+    let captured = String::from_utf8_lossy(&server.requests().await[0]).to_string();
+    let body: Value = serde_json::from_str(captured.split_once("\r\n\r\n").unwrap().1).unwrap();
+    let convert_options = &body["convert_options"];
+    assert!(
+        convert_options.get("picture_description_preset").is_none(),
+        "picture_description_preset must be omitted from chunk source JSON when unset, got: {convert_options}"
+    );
 }

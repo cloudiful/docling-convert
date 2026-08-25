@@ -374,6 +374,12 @@ pub struct RemoteConvertOptions {
     pub chunker: ChunkerKind,
     pub chunking: ChunkingOptions,
     pub pipeline: Option<PipelineKind>,
+    /// Preset ID for picture description, forwarded to Docling Serve as
+    /// `picture_description_preset`. Mutually exclusive with the legacy
+    /// `picture_description_custom_config` emitted when a VLM bundle is
+    /// configured; leaving this `None` preserves the legacy custom VLM
+    /// behaviour.
+    pub picture_description_preset: Option<String>,
 }
 
 impl Default for RemoteConvertOptions {
@@ -382,6 +388,7 @@ impl Default for RemoteConvertOptions {
             chunker: ChunkerKind::None,
             chunking: ChunkingOptions::hybrid_defaults(),
             pipeline: None,
+            picture_description_preset: None,
         }
     }
 }
@@ -531,5 +538,28 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("explicit input_format override"));
+    }
+
+    #[test]
+    fn remote_convert_options_default_omits_picture_description_preset() {
+        let options = RemoteConvertOptions::default();
+        assert!(
+            options.picture_description_preset.is_none(),
+            "default RemoteConvertOptions must not carry a picture_description_preset so the legacy custom VLM bundle is preserved"
+        );
+    }
+
+    #[test]
+    fn remote_convert_options_round_trip_picture_description_preset() {
+        let options = RemoteConvertOptions {
+            chunker: ChunkerKind::None,
+            chunking: ChunkingOptions::default(),
+            pipeline: None,
+            picture_description_preset: Some("granite_vision".to_string()),
+        };
+        assert_eq!(
+            options.picture_description_preset.as_deref(),
+            Some("granite_vision")
+        );
     }
 }

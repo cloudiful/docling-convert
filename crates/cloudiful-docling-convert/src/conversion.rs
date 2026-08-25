@@ -80,6 +80,12 @@ pub struct ConversionBehavior {
     pub chunker: ChunkerKind,
     pub chunking: ChunkingOptions,
     pub pipeline: Option<PipelineKind>,
+    /// Preset ID for picture description, forwarded to Docling Serve as
+    /// `picture_description_preset`. Mutually exclusive with the legacy
+    /// `picture_description_custom_config` emitted when a VLM bundle is
+    /// configured; leaving this `None` preserves the legacy custom VLM
+    /// behaviour.
+    pub picture_description_preset: Option<String>,
 }
 
 impl Default for ConversionBehavior {
@@ -88,6 +94,7 @@ impl Default for ConversionBehavior {
             chunker: ChunkerKind::None,
             chunking: ChunkingOptions::hybrid_defaults(),
             pipeline: None,
+            picture_description_preset: None,
         }
     }
 }
@@ -104,6 +111,7 @@ pub fn build_convert_options(
         chunker: behavior.chunker,
         chunking: behavior.chunking.clone(),
         pipeline: behavior.pipeline,
+        picture_description_preset: behavior.picture_description_preset.clone(),
     };
 
     if matches!(input_kind, InputKind::Pdf) {
@@ -151,5 +159,44 @@ mod tests {
             DoclingRuntimeConfig::without_vlm("http://localhost:5001/v1").into_docling_config();
         assert!(config.api_key.is_none());
         assert!(config.openai_api_key.is_none());
+    }
+
+    #[test]
+    fn default_behavior_has_no_picture_description_preset() {
+        assert!(
+            ConversionBehavior::default()
+                .picture_description_preset
+                .is_none(),
+            "default ConversionBehavior must not surface a picture_description_preset so legacy custom VLM behaviour stays unchanged"
+        );
+    }
+
+    #[test]
+    fn build_convert_options_propagates_picture_description_preset() {
+        let behavior = ConversionBehavior {
+            picture_description_preset: Some("smolvlm".to_string()),
+            ..ConversionBehavior::default()
+        };
+        let options = build_convert_options(InputKind::Pdf, &behavior).unwrap();
+        match options {
+            ConvertOptions::Pdf(remote) => {
+                assert_eq!(
+                    remote.picture_description_preset.as_deref(),
+                    Some("smolvlm")
+                );
+            }
+            other => panic!("expected Pdf options, got {other:?}"),
+        }
+
+        let generic = build_convert_options(InputKind::Docx, &behavior).unwrap();
+        match generic {
+            ConvertOptions::Generic(remote) => {
+                assert_eq!(
+                    remote.picture_description_preset.as_deref(),
+                    Some("smolvlm")
+                );
+            }
+            other => panic!("expected Generic options, got {other:?}"),
+        }
     }
 }

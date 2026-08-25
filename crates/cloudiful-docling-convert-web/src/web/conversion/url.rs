@@ -52,6 +52,7 @@ pub async fn process_url_conversion(
                 chunker: behavior.chunker,
                 chunking: behavior.chunking,
                 pipeline: behavior.pipeline,
+                picture_description_preset: behavior.picture_description_preset,
             },
             temp_dir,
             output_format,
