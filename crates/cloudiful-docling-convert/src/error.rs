@@ -19,7 +19,6 @@ pub enum PdfConvertError {
         message: String,
     },
 
-    #[allow(dead_code)]
     ValidationError {
         parameter: String,
         reason: String,
@@ -189,7 +188,6 @@ impl PdfConvertError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn validation_error(parameter: impl Into<String>, reason: impl Into<String>) -> Self {
         PdfConvertError::ValidationError {
             parameter: parameter.into(),

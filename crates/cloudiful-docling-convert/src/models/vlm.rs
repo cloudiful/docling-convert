@@ -106,19 +106,6 @@ pub struct PictureDescriptionVlmEngineOptions {
 }
 
 impl PictureDescriptionVlmEngineOptions {
-    #[allow(dead_code)]
-    pub fn openrouter(api_key: &str, model_name: &str) -> Self {
-        const PICTURE_DESCRIPTION_PROMPT: &str = "Describe this image in a few sentences.";
-        Self::for_openai_compatible(
-            "https://openrouter.ai/api/v1",
-            api_key,
-            model_name,
-            PICTURE_DESCRIPTION_PROMPT,
-            300,
-            60,
-        )
-    }
-
     pub fn for_openai_compatible(
         base_url: &str,
         api_key: &str,
